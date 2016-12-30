@@ -9,7 +9,7 @@ Before=openhab2.service
 [Service]
 User=root
 Group=root
-WorkingDirectory=/home/pi/MoteinoServer/log
+WorkingDirectory=/opt/moteinoserver
 #PermissionsStartOnly=true
 ExecStartPre=-/bin/mkdir -p /var/log/moteinoserver
 ExecStart=/usr/bin/java -jar /opt/moteinoserver/moteinoserver.jar

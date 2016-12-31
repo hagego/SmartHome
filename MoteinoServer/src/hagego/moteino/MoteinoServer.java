@@ -38,7 +38,7 @@ public class MoteinoServer {
 		else {
 			// on Linux/Raspberry, expect configuration data in $HOME/AlarmPi/config
 			// user.home property returned root home dir when started with sudo
-			configDir = "/etc/moteinoserver";
+			configDir = "/etc/moteinoserver/";
 			log.info("MoteinoServer started, running on Linux/Raspberry");
 		}
 		log.info("config directory="+configDir);

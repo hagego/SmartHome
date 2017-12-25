@@ -113,10 +113,10 @@ public class MoteinoServer {
 			FlicClient flicCLient = new FlicClient("127.0.0.1");
 			
 			ButtonConnectionChannel.Callbacks callbacks = new ButtonConnectionChannel.Callbacks() {
-				public void onButtonSingleOrDoubleClick(ButtonConnectionChannel channel, ClickType clickType, boolean wasQueued, int timeDiff) {
+				public void onButtonSingleOrDoubleClickOrHold(ButtonConnectionChannel channel, ClickType clickType, boolean wasQueued, int timeDiff) {
 					log.fine("Button callback received: clicked="+clickType.toString()+ " wasQueued="+wasQueued);
 					
-					if(clickType==ClickType.ButtonSingleClick && wasQueued==false) {
+					if(wasQueued==false) {
 						log.info("single click received - sending IIC command");
 						
 						try {

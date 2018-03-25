@@ -6,12 +6,14 @@
 // mosquitto 1.3.4 speaks MQTT Version 3.1
 // change to MQTT_VERSION MQTT_VERSION_3_1_1 after upgrade to 1.3.5 or higher
 
+
 #define MQTT_VERSION MQTT_VERSION_3_1
 
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <Servo.h>
+#include <DHT.h>
 
 
 
@@ -23,17 +25,19 @@ const char* password = "";
 const char* mqtt_server = "192.168.178.27";
 
 // servo positions
-const int angleClose = 45;
-const int angleOpen  = 135;
+const int angleClose = 55;
+const int angleOpen  = 155;
 
 // pin definitions (GPIO0-GPIO15 all have internal pull-ups)
-int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
-int pinServoPower  = 14; // GPIO04 servo power, D5 on D1 mini
-int pinManualOpen  = 5;  // GPIO05 connects key to manually open, D1 on D1 mini
-int pinManualClose = 12; // GPIO12 connects key to manually close, D6 on D1 mini
+const int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
+const int pinServoPower  = 14; // GPIO14 servo power, D5 on D1 mini
+const int pinManualOpen  = 5;  // GPIO05 connects key to manually open, D1 on D1 mini
+const int pinManualClose = 12; // GPIO12 connects key to manually close, D6 on D1 mini
+const int pinDHT22       = 13; // GPIO13 DHT22 data, D7 on D1 mini
+
 
 // deep sleep period
-const long SLEEP_PERIOD = 300000000;
+const long SLEEP_PERIOD = 1800000000;
 
 
 
@@ -53,6 +57,8 @@ void setup() {
   bool localControl = false;
   char localCmd[10];
 
+  pinMode(pinServoPower, OUTPUT);
+  digitalWrite(pinServoPower,LOW);
   pinMode(pinManualOpen, INPUT_PULLUP);
   pinMode(pinManualClose, INPUT_PULLUP);
   delay(200);
@@ -116,10 +122,27 @@ void setup() {
         client.subscribe("rabbithutch/door");
       }
 
+      // now measure temperature
+      //delay(2000);
+      DHT dht(pinDHT22,DHT22);
+      float t = dht.readTemperature();
+      Serial.print("temperature: ");
+      Serial.println(t);
+
+      // and publish to MQTT broker
+      char buffer[10];
+      sprintf(buffer,"%.1f",t);
+      client.publish("rabbithutch/temperature", buffer);
+      Serial.print("publishing: ");
+      Serial.println(buffer);
+
       for(int i=0 ; i<10 ; i++) {
         client.loop();
         delay(100);      
       }
+
+
+      
       client.disconnect();
       WiFi.disconnect();
     }
@@ -128,8 +151,11 @@ void setup() {
       Serial.print(client.state());
     }
 
-    Serial.println("sleeping 60s");
-    // wake-up of deep sleep more requires connection between GPIO16 and RST and is actually a reset of the chip
+    Serial.print("sleeping ");
+    Serial.print(SLEEP_PERIOD/1000000);
+    Serial.println("s");
+    // wake-up of deep sleep mode requires connection between GPIO16 (D0 on Mini 1)
+    // and RST and is actually a reset of the chip
     ESP.deepSleep(SLEEP_PERIOD);
 }
 
@@ -181,6 +207,11 @@ void controlServo(int angle) {
   
   int oldAngle = EEPROM.read(0);
 
+  Serial.print("old angle: ");
+  Serial.println(oldAngle);
+  Serial.print("new angle: ");
+  Serial.println(angle);
+
   if(oldAngle>180) {
     oldAngle = 180;
   }
@@ -192,6 +223,10 @@ void controlServo(int angle) {
 
   Servo servo;
   servo.attach(pinServoCtrl);
+  servo.write(oldAngle);
+  delay(100);
+  digitalWrite(pinServoPower,HIGH);
+      
   if(angle>oldAngle) {
     for(int i=oldAngle ; i<angle ; i+=5) {
       servo.write(i);
@@ -209,5 +244,8 @@ void controlServo(int angle) {
   
   EEPROM.write(0,angle);  
   EEPROM.commit();
+
+  digitalWrite(pinServoPower,LOW);
+  delay(100);
 }
 

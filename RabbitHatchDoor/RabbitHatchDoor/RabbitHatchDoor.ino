@@ -24,9 +24,15 @@ const char* password = "";
 // MQTT broker IP address
 const char* mqtt_server = "192.168.178.27";
 
-// servo positions
-const int angleClose = 55;
-const int angleOpen  = 155;
+// MQTT topics
+const char* topicDoor       = "rabbithutch/door";
+const char* topicAngleOpen  = "rabbithutch/angleOpen";
+const char* topicAngleClose = "rabbithutch/angleClose";
+
+// EEPROM addresses
+const int EEPROM_ANGLE_LAST  = 0;
+const int EEPROM_ANGLE_OPEN  = 1;
+const int EEPROM_ANGLE_CLOSE = 2;;
 
 // pin definitions (GPIO0-GPIO15 all have internal pull-ups)
 const int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
@@ -119,7 +125,9 @@ void setup() {
       }
       else {
         // subscribe to opic and check for retained publications
-        client.subscribe("rabbithutch/door");
+        client.subscribe(topicDoor);
+        client.subscribe(topicAngleOpen);
+        client.subscribe(topicAngleClose);
       }
 
       // now measure temperature
@@ -140,8 +148,6 @@ void setup() {
         client.loop();
         delay(100);      
       }
-
-
       
       client.disconnect();
       WiFi.disconnect();
@@ -172,10 +178,39 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
 
-  char cmd[length+1];
-  strncpy(cmd,(char*)payload,length);
-  cmd[length] = 0;
-  processCmd(cmd);
+  char payloadString[length+1];
+  strncpy(payloadString,(char*)payload,length);
+  payloadString[length] = 0;
+    
+  if(strcmp(topic,topicDoor)==0) {
+    processCmd(payloadString);
+  }
+  
+  if(strcmp(topic,topicAngleOpen)==0) {
+    EEPROM.begin(4);
+    byte angle = (byte)atoi(payloadString);
+    Serial.print("recived angleOpen: ");
+    Serial.println((int)angle);
+
+    int oldAngle = EEPROM.read(EEPROM_ANGLE_OPEN);
+    if(angle!=oldAngle) {
+      EEPROM.write(EEPROM_ANGLE_OPEN,angle);
+    }
+    EEPROM.end();
+  }
+  
+  if(strcmp(topic,topicAngleClose)==0) {
+    EEPROM.begin(4);
+    byte angle = (byte)atoi(payloadString);
+    Serial.print("recived angleClose: ");
+    Serial.println((int)angle);
+
+    int oldAngle = EEPROM.read(EEPROM_ANGLE_CLOSE);
+    if(angle!=oldAngle) {
+      EEPROM.write(EEPROM_ANGLE_CLOSE,angle);
+    }
+    EEPROM.end();
+  }
 }
 
 void processCmd(String cmd) {
@@ -184,17 +219,22 @@ void processCmd(String cmd) {
     return;
   }
 
+  EEPROM.begin(4);
   if(cmd == "open") {
-    Serial.println("received door open");
-    controlServo(angleOpen);
+    int angle = EEPROM.read(EEPROM_ANGLE_OPEN);
+    Serial.print("received door open, angle open=");
+    Serial.println(angle);
+    controlServo(angle);
 
     return;
   }
 
   if(cmd == "close") {
-    Serial.println("received door close");
-    controlServo(angleClose);
-    
+    int angle = EEPROM.read(EEPROM_ANGLE_CLOSE);
+    Serial.print("received door close, angle close=");
+    Serial.println(angle);
+    controlServo(angle);
+
     return;
   }
 
@@ -202,10 +242,8 @@ void processCmd(String cmd) {
   Serial.println(cmd);
 }
 
-void controlServo(int angle) {
-  EEPROM.begin(1);
-  
-  int oldAngle = EEPROM.read(0);
+void controlServo(int angle) { 
+  int oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
 
   Serial.print("old angle: ");
   Serial.println(oldAngle);
@@ -242,8 +280,8 @@ void controlServo(int angle) {
   
   servo.write(angle);
   
-  EEPROM.write(0,angle);  
-  EEPROM.commit();
+  EEPROM.write(EEPROM_ANGLE_LAST,angle);  
+  EEPROM.end();
 
   digitalWrite(pinServoPower,LOW);
   delay(100);

@@ -25,14 +25,16 @@ const char* password = "";
 const char* mqtt_server = "192.168.178.27";
 
 // MQTT topics
-const char* topicDoor       = "rabbithutch/door";
-const char* topicAngleOpen  = "rabbithutch/angleOpen";
-const char* topicAngleClose = "rabbithutch/angleClose";
+const char* topicTemperature = "rabbithutch/temperature";
+const char* topicDoor        = "rabbithutch/door";
+const char* topicAngle       = "rabbithutch/angle";
+const char* topicAngleOpen   = "rabbithutch/angleOpen";
+const char* topicAngleClose  = "rabbithutch/angleClose";
 
 // EEPROM addresses
 const int EEPROM_ANGLE_LAST  = 0;
 const int EEPROM_ANGLE_OPEN  = 1;
-const int EEPROM_ANGLE_CLOSE = 2;;
+const int EEPROM_ANGLE_CLOSE = 2;
 
 // pin definitions (GPIO0-GPIO15 all have internal pull-ups)
 const int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
@@ -43,14 +45,18 @@ const int pinDHT22       = 13; // GPIO13 DHT22 data, D7 on D1 mini
 
 
 // deep sleep period
-const long SLEEP_PERIOD = 1800000000;
+const long SLEEP_PERIOD = 3600000000;
 
 
 
 void callback(char* topic, byte* payload, unsigned int length);
-void processCmd(String cmd);
-void controlServo(int angle);
+int  processCmd(String cmd);
+int  controlServo(int angle);
 
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+  
 void setup() {
   // setup serial
   Serial.begin(115200);
@@ -61,6 +67,7 @@ void setup() {
 
   // check local push buttons for manual control
   bool localControl = false;
+  int  newAngle = -1;
   char localCmd[10];
 
   pinMode(pinServoPower, OUTPUT);
@@ -73,17 +80,14 @@ void setup() {
     Serial.println("push button manual open pressed");
     localControl = true;
     strcpy(localCmd,"open");
-    processCmd(localCmd);
+    newAngle = processCmd(localCmd);
   }
   if(digitalRead(pinManualClose) == LOW){ 
     Serial.println("push button manual close pressed");
     localControl = true;
     strcpy(localCmd,"close");
-    processCmd(localCmd);
+    newAngle = processCmd(localCmd);
   }
-
-  WiFiClient espClient;
-  PubSubClient client(espClient);
   
   // Connect to WiFi network
   WiFi.disconnect();
@@ -108,7 +112,6 @@ void setup() {
   Serial.print("Connected to WiFi, IP address=");
   Serial.println(WiFi.localIP());
 
-
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
   
@@ -122,6 +125,13 @@ void setup() {
 
       if(localControl) {
         client.publish("rabbithutch/local", localCmd);
+
+        // and publish new angle to MQTT broker
+        char buffer[200];
+        sprintf(buffer,"publishing to topic %s : %d",topicAngle,newAngle);
+        Serial.println(buffer);
+        sprintf(buffer,"%d",newAngle);
+        client.publish(topicAngle, buffer);
       }
       else {
         // subscribe to opic and check for retained publications
@@ -140,11 +150,13 @@ void setup() {
       // and publish to MQTT broker
       char buffer[10];
       sprintf(buffer,"%.1f",t);
-      client.publish("rabbithutch/temperature", buffer);
-      Serial.print("publishing: ");
+      client.publish(topicTemperature, buffer);
+      Serial.print("publishing to topic ");
+      Serial.print(topicTemperature);
+      Serial.print(": ");
       Serial.println(buffer);
 
-      for(int i=0 ; i<10 ; i++) {
+      for(int i=0 ; i<20 ; i++) {
         client.loop();
         delay(100);      
       }
@@ -183,7 +195,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
   payloadString[length] = 0;
     
   if(strcmp(topic,topicDoor)==0) {
-    processCmd(payloadString);
+    int newAngle = processCmd(payloadString);
+
+    if(newAngle >= 0 ) {
+      // publish new angle to MQTT broker
+      char buffer[200];
+      sprintf(buffer,"publishing to topic %s : %d",topicAngle,newAngle);
+      Serial.println(buffer);
+      sprintf(buffer,"%d",newAngle);
+      client.publish(topicAngle, buffer);
+    }
   }
   
   if(strcmp(topic,topicAngleOpen)==0) {
@@ -213,10 +234,12 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-void processCmd(String cmd) {
+// returns -1 if position was not changes
+// otherwise returns new angle
+int processCmd(String cmd) {
   if(cmd == "nothing") {
     Serial.println("no action needed");
-    return;
+    return -1;
   }
 
   EEPROM.begin(4);
@@ -224,25 +247,26 @@ void processCmd(String cmd) {
     int angle = EEPROM.read(EEPROM_ANGLE_OPEN);
     Serial.print("received door open, angle open=");
     Serial.println(angle);
-    controlServo(angle);
-
-    return;
+    return controlServo(angle);
   }
 
   if(cmd == "close") {
     int angle = EEPROM.read(EEPROM_ANGLE_CLOSE);
     Serial.print("received door close, angle close=");
     Serial.println(angle);
-    controlServo(angle);
-
-    return;
+    return controlServo(angle);
   }
 
   Serial.print("Unknown servo command: ");
   Serial.println(cmd);
+
+  return -1;
 }
 
-void controlServo(int angle) { 
+
+// returns -1 if position was not changes
+// otherwise returns new angle
+int controlServo(int angle) { 
   int oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
 
   Serial.print("old angle: ");
@@ -256,7 +280,7 @@ void controlServo(int angle) {
 
   if(angle==oldAngle) {
     Serial.println("no change in door position");
-    return;
+    return -1;
   }
 
   Servo servo;
@@ -282,8 +306,10 @@ void controlServo(int angle) {
   
   EEPROM.write(EEPROM_ANGLE_LAST,angle);  
   EEPROM.end();
-
+  
   digitalWrite(pinServoPower,LOW);
-  delay(100);
+  delay(500);
+
+  return angle;
 }
 

@@ -1,30 +1,20 @@
 package hagego.moteino;
 
-
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
+
+import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 
 import com.pi4j.io.i2c.I2CBus;
 import com.pi4j.io.i2c.I2CDevice;
 import com.pi4j.io.i2c.I2CFactory;
 import com.pi4j.io.i2c.I2CFactory.UnsupportedBusNumberException;
 
-import io.flic.fliclib.javaclient.Bdaddr;
-import io.flic.fliclib.javaclient.ButtonConnectionChannel;
-import io.flic.fliclib.javaclient.FlicClient;
-import io.flic.fliclib.javaclient.enums.ClickType;
-import io.flic.fliclib.javaclient.enums.ConnectionStatus;
-import io.flic.fliclib.javaclient.enums.DisconnectReason;
-import io.flic.fliclib.javaclient.enums.LatencyMode;
-import io.flic.fliclib.javaclient.enums.RemovedReason;
 
-public class MoteinoServer {
+public class MoteinoServer implements IMqttMessageListener {
 	
 	public static void main(String[] args) {
 		
@@ -70,86 +60,8 @@ public class MoteinoServer {
 		}
 		log.info("MoteinoServer started successfully");
 		
-		// start TCP server
-		final ExecutorService threadPool;
-		final ServerSocket    serverSocket;  
-		
-	    try {
-			serverSocket  = new ServerSocket(port);
-			threadPool    = Executors.newCachedThreadPool();
-			
-			Thread serverThread = new Thread(new TcpServer(serverSocket,threadPool,moteinoServer));
-			serverThread.setDaemon(true);
-			serverThread.start();
-			
-			log.info("TCP server started");
-			
-			// add hook to shut down server at a CTRL-C
-		    Runtime.getRuntime().addShutdownHook( new Thread() {
-				public void run() {
-					log.info("CTRL-C - shutting down");
-					threadPool.shutdownNow(); // don't accept new requests
-					try {
-						// wait max. 2 seconds for termination of all threads
-						threadPool.awaitTermination(2L, TimeUnit.SECONDS);
-						if (!serverSocket.isClosed()) {
-							log.info("shutting down server");
-							serverSocket.close();
-						}
-					}
-					catch (IOException | InterruptedException e) {
-						log.severe("Exception during shutdown: "+e);
-					}
-				}
-			});
-		} catch (IOException e) {
-			log.severe("Unable to create server socket for remote client access on port "+port);
-			log.severe(e.getMessage());
-		}
-	    
-	    // start connection to flicd
-	    try {
-	    	log.info("creating connection to flicd");
-			FlicClient flicCLient = new FlicClient("127.0.0.1");
-			
-			ButtonConnectionChannel.Callbacks callbacks = new ButtonConnectionChannel.Callbacks() {
-				public void onButtonSingleOrDoubleClickOrHold(ButtonConnectionChannel channel, ClickType clickType, boolean wasQueued, int timeDiff) {
-					log.fine("Button callback received: clicked="+clickType.toString()+ " wasQueued="+wasQueued);
-					
-					if(wasQueued==false) {
-						log.info("single click received - sending IIC command");
-						
-						try {
-							moteinoServer.write((byte)2, (byte)10, (byte)1);
-						} catch (IICException e) {
-							log.severe("IICException during write after Button click received");
-							log.severe(e.getMessage());
-						}
-					}
-				}
-				
-				public void onConnectionStatusChanged(ButtonConnectionChannel channel,ConnectionStatus connectionStatus,DisconnectReason disconnectReason) {
-					log.info("onStatusChanged received: connectionStatus="+connectionStatus+" diconnectReason="+disconnectReason);
-				}
-				
-				public void onRemoved(ButtonConnectionChannel channel,RemovedReason removedReason) {
-					log.severe("onRemoved callback received. removedReason="+removedReason);
-				}
-			};
-			
-			// first button used
-			// Bdaddr bdaddr = new Bdaddr("80:e4:da:70:33:3f");
-			Bdaddr bdaddr = new Bdaddr("80:e4:da:70:33:40");
-			ButtonConnectionChannel button = new ButtonConnectionChannel(bdaddr, LatencyMode.NormalLatency, (short)5, callbacks);
-			flicCLient.addConnectionChannel(button);
-			
-			log.info("entering flic event loop");;
-			flicCLient.handleEvents();
-		} catch (IOException e) {
-			log.severe("Unable to connect to flicd");
-			log.severe(e.getMessage());
-		}
-
+		// register as MQTT client
+		moteinoServer.registerMqttClient();
 	}
 	
 	/**
@@ -322,11 +234,40 @@ public class MoteinoServer {
 			throw new IICException("low-level IIC IO error");
 		}
 	}
+
+	/**
+	 * register as MQTT client and subscribe for topic
+	 */
+	void registerMqttClient() {
+		// create MQTT client (if specified)
+		log.info("Creating MQTT client");
+		MqttClient.getMqttClient();
+		
+		MqttClient.getMqttClient().subscribe("garage/door", this);
+		
+		log.info("succesfully registered as MQTT client");
+	}
+	
+	@Override
+	public void messageArrived(String topic, MqttMessage message) throws Exception {
+		log.fine("MQTT message arrived: topic="+topic+" content="+message);
+		
+		byte slaveID = (byte)2;
+		byte address = (byte)10;
+		byte value   = (byte)1;
+		log.fine("IIC write slaveID="+slaveID+" address="+address+" value="+value);
+		
+		try {
+			write(slaveID, address, value);
+		} catch (IICException e) {
+			log.severe("IIC write exception: "+e.getMessage());
+		}
+		
+	}
 	
 	
 	// private members
 	private static final Logger log  = Logger.getLogger( MoteinoServer.class.getName() );
-	private static final int    port = 3458;
 	
 	private static MoteinoServer theInstance = null;
 	private final  I2CDevice     moteino;

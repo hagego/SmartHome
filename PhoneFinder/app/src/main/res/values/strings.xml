@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">Phone Finder</string>
+    <string name="action_settings">Settings</string>
+
+    <string name="title_activity_settings">Settings</string>
+
+    <!-- Preferences -->
+    <string name="preferences_header">MQTT settings</string>
+
+    <string name="preference_title_mqtt_uri">MQTT Server</string>
+    <string name="preference_key_mqtt_uri">MqttServerUri</string>
+
+    <string name="preference_title_phone_id">Phone ID</string>
+    <string name="preference_key_phone_id">PhoneId</string>
+
+    <string name="notification_channel_running_name">service running</string>
+    <string name="notification_channel_running_description">Phone Finder service is running</string>
+    <string name="notification_channel_active_name">service active</string>
+    <string name="notification_channel_active_description">Phone Finder service is active</string>
+
+    <string name="notification_running_title">service running</string>
+    <string name="notification_running_text">Phone Finder service is running</string>
+    <string name="notification_active_title">someone is looking for me</string>
+    <string name="notification_active_text">someone is looking for me</string>
+    <string name="notification_active_action_stop">found you</string>
+</resources>

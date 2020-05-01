@@ -31,7 +31,11 @@ const char* mqttClientName = "GarageDoorServer";
 const char* mqttTopicToggleDoor  = "garage/door";
 const char* mqttTopicStatus      = "garage/doorServerStatus";
 
+// MQTT callback function for subscribed topics
 void mqttCallback(char* topic, byte* payload, unsigned int length);
+
+// MQTT ping interval (ms)
+const long mqttPingInterval = 60000;
 
 
 WiFiClient   wifiClient;
@@ -40,7 +44,8 @@ PubSubClient mqttClient(wifiClient);
 void sendPing();
 
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println("Booting");
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -104,7 +109,7 @@ void setup() {
   mqttClient.setCallback(mqttCallback);
   if (mqttClient.connect(mqttClientName)) {
       Serial.println("connected");
-      mqttClient.publish(mqttTopicStatus, "started");
+      mqttClient.publish(mqttTopicStatus, "started",true);
 
       mqttClient.subscribe(mqttTopicToggleDoor);
   }
@@ -135,11 +140,10 @@ void loop() {
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
-const long interval = 60000;
-unsigned long previousMillis = 0;
- 
 void sendPing()
 {
+  static unsigned long previousMillis = 0;
+
   // check MQTT connection status and reconnect if needed
   if(!mqttClient.connected()){
     Serial.println("MQTT client disconnected");
@@ -152,7 +156,7 @@ void sendPing()
       }
       if(mqttClient.connected()){
         Serial.println("MQTT client reconnected");
-        mqttClient.publish(mqttTopicStatus, "reconnected");
+        mqttClient.publish(mqttTopicStatus, "reconnected",true);
         mqttClient.subscribe(mqttTopicToggleDoor);
       }
     }
@@ -161,16 +165,19 @@ void sendPing()
   unsigned long currentMillis = millis();
  
   // if enough millis have elapsed
-  if (currentMillis - previousMillis >= interval)
+  if (currentMillis - previousMillis >= mqttPingInterval)
   {
     previousMillis = currentMillis;
     
     Serial.println("sending ping");
-    mqttClient.publish(mqttTopicStatus, "ping");
+    mqttClient.publish(mqttTopicStatus, "ping",true);
   }
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  byte open[]  = {0xA0, 0x01, 0x00, 0xA1};
+  byte close[] = {0xA0, 0x01, 0x01, 0xA2};
+  
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
@@ -185,6 +192,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     
   if(strcmp(topic,mqttTopicToggleDoor)==0) {
     if(strcmp(payloadString,"ON")==0 || strcmp(payloadString,"toggle")==0) {
+      Serial.write(close, sizeof(close));
+      delay(500);      
+      Serial.write(open, sizeof(open));
+      
       mqttClient.publish(mqttTopicStatus, "toggled");
     }
   }

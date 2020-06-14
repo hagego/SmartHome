@@ -15,11 +15,16 @@
 #include <Servo.h>
 #include <DHT.h>
 
+// include WLAN authentification information
+#include "WifiInfo.h"
 
+#ifndef WIFI_SSID
+#define WIFI_SSID "my_ssid"
+#define WIFI_PSK  "my_psk"
+#endif
 
-// WiFi Router Login - change these to your router settings
-const char* SSID     = "";
-const char* password = "";
+const char* SSID     = WIFI_SSID;
+const char* password = WIFI_PSK;
 
 // MQTT broker IP address
 const char* mqtt_server = "192.168.178.27";
@@ -45,8 +50,7 @@ const int pinDHT22       = 13; // GPIO13 DHT22 data, D7 on D1 mini
 
 
 // deep sleep period
-const long SLEEP_PERIOD = 3600000000;
-
+const unsigned long SLEEP_PERIOD = 3600000000;
 
 
 void callback(char* topic, byte* payload, unsigned int length);
@@ -96,7 +100,7 @@ void setup() {
   Serial.println(SSID);
   WiFi.begin(SSID, password);
 
-  static int COUNTER_MAX = 20;
+  static int COUNTER_MAX = 40;
   int counter = 0;
   while (WiFi.status() != WL_CONNECTED && counter<COUNTER_MAX) {
     delay(500);
@@ -141,7 +145,7 @@ void setup() {
       }
 
       // now measure temperature
-      //delay(2000);
+      delay(1000);
       DHT dht(pinDHT22,DHT22);
       float t = dht.readTemperature();
       Serial.print("temperature: ");
@@ -170,11 +174,12 @@ void setup() {
     }
 
     Serial.print("sleeping ");
-    Serial.print(SLEEP_PERIOD/1000000);
+    Serial.print(SLEEP_PERIOD/1000000UL);
     Serial.println("s");
     // wake-up of deep sleep mode requires connection between GPIO16 (D0 on Mini 1)
     // and RST and is actually a reset of the chip
-    ESP.deepSleep(SLEEP_PERIOD);
+    pinMode(D0, WAKEUP_PULLUP);
+    ESP.deepSleep(SLEEP_PERIOD,RF_CAL);
 }
 
 void loop() {
@@ -312,4 +317,3 @@ int controlServo(int angle) {
 
   return angle;
 }
-

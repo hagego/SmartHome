@@ -147,18 +147,19 @@ void sendPing()
   // check MQTT connection status and reconnect if needed
   if(!mqttClient.connected()){
     Serial.println("MQTT client disconnected");
-    while(!mqttClient.connected()){
+    mqttClient.connect(mqtt_server);
+    uint8_t timeout = 8;
+    while (timeout && (!mqttClient.connected())){
+      timeout--;
       mqttClient.connect(mqtt_server);
-      uint8_t timeout = 8;
-      while (timeout && (!mqttClient.connected())){
-        timeout--;
-        delay(1000);
-      }
-      if(mqttClient.connected()){
-        Serial.println("MQTT client reconnected");
-        mqttClient.publish(mqttTopicStatus, "reconnected",true);
-        mqttClient.subscribe(mqttTopicToggleDoor);
-      }
+      delay(1000);
+    }
+    if(mqttClient.connected()){
+      Serial.println("MQTT client reconnected");
+      mqttClient.publish(mqttTopicStatus, "reconnected",false);
+      mqttClient.subscribe(mqttTopicToggleDoor);
+
+      delay(500);
     }
   }
   
@@ -170,7 +171,7 @@ void sendPing()
     previousMillis = currentMillis;
     
     Serial.println("sending ping");
-    mqttClient.publish(mqttTopicStatus, "ping",true);
+    mqttClient.publish(mqttTopicStatus, "ping",false);
   }
 }
 

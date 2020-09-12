@@ -145,8 +145,9 @@ void setup() {
       }
 
       // now measure temperature
-      delay(1000);
       DHT dht(pinDHT22,DHT22);
+      dht.begin();
+      delay(2000);
       float t = dht.readTemperature();
       Serial.print("temperature: ");
       Serial.println(t);

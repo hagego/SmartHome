@@ -128,6 +128,7 @@ void setup() {
   // set up MQTT client
   mqttClient.setServer(mqtt_server, 1883);
   mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(60);
   if (mqttClient.connect(mqttClientName)) {
       Serial.println("connected");
       mqttClient.publish(mqttTopicStatus, "started",true);
@@ -186,7 +187,7 @@ void sendPing()
   if(!mqttClient.connected()){
     Serial.println("MQTT client disconnected");
     while(!mqttClient.connected()){
-      mqttClient.connect(mqtt_server);
+      mqttClient.connect(mqttClientName);
       uint8_t timeout = 8;
       while (timeout && (!mqttClient.connected())){
         timeout--;

@@ -107,6 +107,7 @@ void setup() {
   // set up MQTT client
   mqttClient.setServer(mqtt_server, 1883);
   mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(60);
   if (mqttClient.connect(mqttClientName)) {
       Serial.println("connected");
       mqttClient.publish(mqttTopicStatus, "started",true);
@@ -136,6 +137,8 @@ void loop() {
   ArduinoOTA.handle();
   mqttClient.loop();
   sendPing();
+
+  delay(500);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -147,11 +150,11 @@ void sendPing()
   // check MQTT connection status and reconnect if needed
   if(!mqttClient.connected()){
     Serial.println("MQTT client disconnected");
-    mqttClient.connect(mqtt_server);
+    mqttClient.connect(mqttClientName);
     uint8_t timeout = 8;
     while (timeout && (!mqttClient.connected())){
       timeout--;
-      mqttClient.connect(mqtt_server);
+      mqttClient.connect(mqttClientName);
       delay(1000);
     }
     if(mqttClient.connected()){

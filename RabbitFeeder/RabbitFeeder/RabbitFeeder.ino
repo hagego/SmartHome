@@ -187,6 +187,7 @@ void openHatch() {
     servo.write(angle);
     delay(100);
   }  
-  
+
+  digitalWrite(pinServoPower,LOW);
   client.publish(topicHatchCmd, "done",true);
 }

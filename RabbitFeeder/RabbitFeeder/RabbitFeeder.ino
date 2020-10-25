@@ -111,21 +111,8 @@ void setup() {
       delay(100);      
     }
 
-    DHT dht(pinDHT22,DHT22);
-    dht.begin();
-    delay(2000);
-    float t = dht.readTemperature();
-    Serial.print("temperature: ");
-    Serial.println(t);
-
-    // and publish to MQTT broker
-    char buffer[10];
-    sprintf(buffer,"%.1f",t);
-    client.publish(topicTemperature, buffer);
-    Serial.print("publishing to topic ");
-    Serial.print(topicTemperature);
-    Serial.print(": ");
-    Serial.println(buffer);
+    // read temperature on DHT11
+    readTemperature();
       
     client.disconnect();
     WiFi.disconnect();
@@ -190,4 +177,30 @@ void openHatch() {
 
   digitalWrite(pinServoPower,LOW);
   client.publish(topicHatchCmd, "done",true);
+}
+
+// read temperature on DHT11
+void readTemperature()
+{
+    digitalWrite(pinServoPower,HIGH);
+    delay(500);
+    
+    DHT dht(pinDHT22,DHT22);
+    dht.begin();
+    
+    float t = dht.readTemperature();
+
+    digitalWrite(pinServoPower,LOW);
+    
+    Serial.print("temperature: ");
+    Serial.println(t);
+
+    // and publish to MQTT broker
+    char buffer[10];
+    sprintf(buffer,"%.1f",t);
+    client.publish(topicTemperature, buffer);
+    Serial.print("publishing to topic ");
+    Serial.print(topicTemperature);
+    Serial.print(": ");
+    Serial.println(buffer);
 }

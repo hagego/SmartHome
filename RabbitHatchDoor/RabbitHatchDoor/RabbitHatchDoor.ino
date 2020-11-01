@@ -29,6 +29,9 @@ const char* password = WIFI_PSK;
 // MQTT broker IP address
 const char* mqtt_server = "192.168.178.27";
 
+// MQTT client name
+const char* mqtt_client = "rabbithutch";
+
 // MQTT topics
 const char* topicTemperature = "rabbithutch/temperature";
 const char* topicDoor        = "rabbithutch/door";
@@ -37,9 +40,13 @@ const char* topicAngleOpen   = "rabbithutch/angleOpen";
 const char* topicAngleClose  = "rabbithutch/angleClose";
 
 // EEPROM addresses
-const int EEPROM_ANGLE_LAST  = 0;
-const int EEPROM_ANGLE_OPEN  = 1;
-const int EEPROM_ANGLE_CLOSE = 2;
+const int EEPROM_ANGLE_LAST          = 0;
+const int EEPROM_ANGLE_OPEN          = 1;
+const int EEPROM_ANGLE_CLOSE         = 2;
+const int EEPROM_TEMPERATURE_COUNTER = 3;
+
+// temperature measure frequency
+byte TEMPERATURE_MEASURE_FREQUENCY = 2;  // measure every 2nd wake-up
 
 // pin definitions (GPIO0-GPIO15 all have internal pull-ups)
 const int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
@@ -76,6 +83,7 @@ void setup() {
 
   pinMode(pinServoPower, OUTPUT);
   digitalWrite(pinServoPower,LOW);
+  
   pinMode(pinManualOpen, INPUT_PULLUP);
   pinMode(pinManualClose, INPUT_PULLUP);
   delay(200);
@@ -100,7 +108,7 @@ void setup() {
   Serial.println(SSID);
   WiFi.begin(SSID, password);
 
-  static int COUNTER_MAX = 40;
+  static int COUNTER_MAX = 20;
   int counter = 0;
   while (WiFi.status() != WL_CONNECTED && counter<COUNTER_MAX) {
     delay(500);
@@ -118,69 +126,72 @@ void setup() {
 
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
+  char buffer[128];
+  sprintf(buffer,"%s-%d",mqtt_client,ESP.getChipId());
   
-    Serial.print("Attempting MQTT connection to broker at ");
-    Serial.println(mqtt_server);
-    // Attempt to connect
-    if (client.connect("ESP8266Client")) {
-      Serial.println("connected");
-      // Once connected, publish an announcement...
-      client.publish("rabbithutch/connect", "connected");
+  Serial.print("Attempting MQTT connection to broker at ");
+  Serial.print(mqtt_server);
+  Serial.print(" as client ");
+  Serial.println(buffer);
+    
+  // Attempt to connect
+  if (client.connect(buffer)) {
+    Serial.println("connected");
+    // Once connected, publish an announcement...
+    client.publish("rabbithutch/connect", "connected");
 
-      if(localControl) {
-        client.publish("rabbithutch/local", localCmd);
+    if(localControl) {
+      client.publish("rabbithutch/local", localCmd);
 
-        // and publish new angle to MQTT broker
+      // and publish new angle to MQTT broker
+      if(newAngle>=0) {
         char buffer[200];
         sprintf(buffer,"publishing to topic %s : %d",topicAngle,newAngle);
         Serial.println(buffer);
         sprintf(buffer,"%d",newAngle);
         client.publish(topicAngle, buffer);
       }
-      else {
-        // subscribe to opic and check for retained publications
-        client.subscribe(topicDoor);
-        client.subscribe(topicAngleOpen);
-        client.subscribe(topicAngleClose);
-      }
-
-      // now measure temperature
-      DHT dht(pinDHT22,DHT22);
-      dht.begin();
-      delay(2000);
-      float t = dht.readTemperature();
-      Serial.print("temperature: ");
-      Serial.println(t);
-
-      // and publish to MQTT broker
-      char buffer[10];
-      sprintf(buffer,"%.1f",t);
-      client.publish(topicTemperature, buffer);
-      Serial.print("publishing to topic ");
-      Serial.print(topicTemperature);
-      Serial.print(": ");
-      Serial.println(buffer);
-
-      for(int i=0 ; i<20 ; i++) {
-        client.loop();
-        delay(100);      
-      }
-      
-      client.disconnect();
-      WiFi.disconnect();
     }
     else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
+      // subscribe to opic and check for retained publications
+      client.subscribe(topicDoor);
+      client.subscribe(topicAngleOpen);
+      client.subscribe(topicAngleClose);
     }
 
-    Serial.print("sleeping ");
-    Serial.print(SLEEP_PERIOD/1000000UL);
-    Serial.println("s");
-    // wake-up of deep sleep mode requires connection between GPIO16 (D0 on Mini 1)
-    // and RST and is actually a reset of the chip
-    pinMode(D0, WAKEUP_PULLUP);
-    ESP.deepSleep(SLEEP_PERIOD,RF_CAL);
+    // now measure temperature
+  EEPROM.begin(16);
+  byte value = EEPROM.read(EEPROM_TEMPERATURE_COUNTER);
+  if(value >= TEMPERATURE_MEASURE_FREQUENCY) {
+    Serial.println("triggering temperature measure");
+    readTemperature();
+    value = 0;
+  }
+  value++;
+  EEPROM.write(EEPROM_TEMPERATURE_COUNTER,value);
+  EEPROM.end();
+
+    for(int i=0 ; i<20 ; i++) {
+      client.loop();
+      delay(100);      
+    }
+    
+    client.disconnect();
+    WiFi.disconnect();
+  }
+  else {
+    Serial.print("failed, rc=");
+    Serial.print(client.state());
+  }
+
+  Serial.print("sleeping ");
+  Serial.print(SLEEP_PERIOD/1000000UL);
+  Serial.println("s");
+  // wake-up of deep sleep mode requires connection between GPIO16 (D0 on Mini 1)
+  // and RST and is actually a reset of the chip
+  pinMode(D0, WAKEUP_PULLUP);
+  ESP.deepSleep(SLEEP_PERIOD,RF_CAL);
 }
 
 void loop() {
@@ -317,4 +328,30 @@ int controlServo(int angle) {
   delay(500);
 
   return angle;
+}
+
+// read temperature on DHT11
+void readTemperature()
+{
+    digitalWrite(pinServoPower,HIGH);
+    delay(200);
+    
+    DHT dht(pinDHT22,DHT22);
+    dht.begin();
+    
+    float t = dht.readTemperature();
+
+    digitalWrite(pinServoPower,LOW);
+    
+    Serial.print("temperature: ");
+    Serial.println(t);
+
+    // and publish to MQTT broker
+    char buffer[10];
+    sprintf(buffer,"%.1f",t);
+    client.publish(topicTemperature, buffer);
+    Serial.print("publishing to topic ");
+    Serial.print(topicTemperature);
+    Serial.print(": ");
+    Serial.println(buffer);
 }

@@ -34,6 +34,7 @@ const char* mqtt_client = "rabbithutch";
 
 // MQTT topics
 const char* topicTemperature = "rabbithutch/temperature";
+const char* topicVbat        = "rabbithutch/vbat";
 const char* topicDoor        = "rabbithutch/door";
 const char* topicAngle       = "rabbithutch/angle";
 const char* topicAngleOpen   = "rabbithutch/angleOpen";
@@ -44,6 +45,11 @@ const int EEPROM_ANGLE_LAST          = 0;
 const int EEPROM_ANGLE_OPEN          = 1;
 const int EEPROM_ANGLE_CLOSE         = 2;
 const int EEPROM_TEMPERATURE_COUNTER = 3;
+
+// resistor values for battery voltage measurement
+const double ADC_RESISTOR_EXTERNAL = 1E6;
+const double ADC_RESISTOR_INTERNAL = 220E3;
+const double ADC_RESISTOR_MEASURE  = 100E3;
 
 // temperature measure frequency
 byte TEMPERATURE_MEASURE_FREQUENCY = 2;  // measure every 2nd wake-up
@@ -160,17 +166,32 @@ void setup() {
       client.subscribe(topicAngleClose);
     }
 
+    // measure battery voltage and publish
+    int adcValue = analogRead(A0);
+    Serial.print("ADC value: ");
+    Serial.println(adcValue);
+    double vbat = ((double)adcValue/1023.0)*(ADC_RESISTOR_MEASURE+ADC_RESISTOR_INTERNAL+ADC_RESISTOR_EXTERNAL)/ADC_RESISTOR_MEASURE;
+    Serial.print("battery voltage [V]: ");
+    Serial.println(vbat);
+    char buffer[100];
+    sprintf(buffer,"publishing to topic %s : %f",topicVbat,vbat);
+    Serial.println(buffer);
+    sprintf(buffer,"%f",vbat);
+    client.publish(topicVbat, buffer);
+
     // now measure temperature
-  EEPROM.begin(16);
-  byte value = EEPROM.read(EEPROM_TEMPERATURE_COUNTER);
-  if(value >= TEMPERATURE_MEASURE_FREQUENCY) {
-    Serial.println("triggering temperature measure");
-    readTemperature();
-    value = 0;
-  }
-  value++;
-  EEPROM.write(EEPROM_TEMPERATURE_COUNTER,value);
-  EEPROM.end();
+    /*
+    EEPROM.begin(16);
+    byte value = EEPROM.read(EEPROM_TEMPERATURE_COUNTER);
+    if(value >= TEMPERATURE_MEASURE_FREQUENCY) {
+      Serial.println("triggering temperature measure");
+      readTemperature();
+      value = 0;
+    }
+    value++;
+    EEPROM.write(EEPROM_TEMPERATURE_COUNTER,value);
+    EEPROM.end();
+    */
 
     for(int i=0 ; i<20 ; i++) {
       client.loop();
@@ -293,6 +314,13 @@ int controlServo(int angle) {
 
   if(oldAngle>180) {
     oldAngle = 180;
+    Serial.println("correcting old angle to 180");
+  }
+
+  
+  if(angle>180) {
+    angle = 180;
+    Serial.println("correcting angle to 180");
   }
 
   if(angle==oldAngle) {
@@ -304,6 +332,12 @@ int controlServo(int angle) {
   servo.attach(pinServoCtrl);
   servo.write(oldAngle);
   delay(100);
+
+  // make sue DHHT22 data pin is low during power anble
+  // otherwise COM port at PC gets reset - GND shifts ?
+  pinMode(pinDHT22, OUTPUT);
+  digitalWrite(pinDHT22,LOW);
+    
   digitalWrite(pinServoPower,HIGH);
       
   if(angle>oldAngle) {
@@ -330,15 +364,21 @@ int controlServo(int angle) {
   return angle;
 }
 
-// read temperature on DHT11
+// read temperature on DHT22 (AM2302)
 void readTemperature()
 {
+    // make sue DHHT22 data pin is low during power anble
+    // otherwise COM port at PC gets reset - GND shifts ?
+    pinMode(pinDHT22, OUTPUT);
+    digitalWrite(pinDHT22,LOW);
+    delay(100);
+
     digitalWrite(pinServoPower,HIGH);
-    delay(200);
+    delay(500);
     
-    DHT dht(pinDHT22,DHT22);
+    DHT dht(pinDHT22,DHT22); 
     dht.begin();
-    
+
     float t = dht.readTemperature();
 
     digitalWrite(pinServoPower,LOW);

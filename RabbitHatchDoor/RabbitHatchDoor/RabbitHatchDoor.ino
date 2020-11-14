@@ -41,6 +41,8 @@ const char* topicAngleOpen   = "rabbithutch/angleOpen";
 const char* topicAngleClose  = "rabbithutch/angleClose";
 
 // EEPROM addresses
+const int EEPROM_SIZE                = 16;
+
 const int EEPROM_ANGLE_LAST          = 0;
 const int EEPROM_ANGLE_OPEN          = 1;
 const int EEPROM_ANGLE_CLOSE         = 2;
@@ -246,27 +248,31 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   
   if(strcmp(topic,topicAngleOpen)==0) {
-    EEPROM.begin(4);
+    EEPROM.begin(EEPROM_SIZE);
     byte angle = (byte)atoi(payloadString);
     Serial.print("recived angleOpen: ");
     Serial.println((int)angle);
 
     int oldAngle = EEPROM.read(EEPROM_ANGLE_OPEN);
     if(angle!=oldAngle) {
+      Serial.println("Storing angleOpen in EEPROM");
       EEPROM.write(EEPROM_ANGLE_OPEN,angle);
+      EEPROM.commit();
     }
     EEPROM.end();
   }
   
   if(strcmp(topic,topicAngleClose)==0) {
-    EEPROM.begin(4);
+    EEPROM.begin(EEPROM_SIZE);
     byte angle = (byte)atoi(payloadString);
     Serial.print("recived angleClose: ");
     Serial.println((int)angle);
 
     int oldAngle = EEPROM.read(EEPROM_ANGLE_CLOSE);
     if(angle!=oldAngle) {
+      Serial.println("Storing angleClose in EEPROM");
       EEPROM.write(EEPROM_ANGLE_CLOSE,angle);
+      EEPROM.commit();
     }
     EEPROM.end();
   }
@@ -280,7 +286,7 @@ int processCmd(String cmd) {
     return -1;
   }
 
-  EEPROM.begin(4);
+  EEPROM.begin(EEPROM_SIZE);
   if(cmd == "open") {
     int angle = EEPROM.read(EEPROM_ANGLE_OPEN);
     Serial.print("received door open, angle open=");
@@ -333,10 +339,11 @@ int controlServo(int angle) {
   servo.write(oldAngle);
   delay(100);
 
-  // make sue DHHT22 data pin is low during power anble
+  // make sure DHHT22 data pin is low during power enable
   // otherwise COM port at PC gets reset - GND shifts ?
   pinMode(pinDHT22, OUTPUT);
   digitalWrite(pinDHT22,LOW);
+  delay(100);
     
   digitalWrite(pinServoPower,HIGH);
       
@@ -354,7 +361,8 @@ int controlServo(int angle) {
   }
   
   servo.write(angle);
-  
+
+  EEPROM.begin(EEPROM_SIZE);
   EEPROM.write(EEPROM_ANGLE_LAST,angle);  
   EEPROM.end();
   
@@ -367,14 +375,14 @@ int controlServo(int angle) {
 // read temperature on DHT22 (AM2302)
 void readTemperature()
 {
-    // make sue DHHT22 data pin is low during power anble
+    // make sure DHHT22 data pin is low during power enable
     // otherwise COM port at PC gets reset - GND shifts ?
     pinMode(pinDHT22, OUTPUT);
     digitalWrite(pinDHT22,LOW);
     delay(100);
 
     digitalWrite(pinServoPower,HIGH);
-    delay(500);
+    delay(1000);
     
     DHT dht(pinDHT22,DHT22); 
     dht.begin();

@@ -42,8 +42,8 @@ const double ADC_RESISTOR_EXTERNAL = 1E6;
 const double ADC_RESISTOR_INTERNAL = 220E3;
 const double ADC_RESISTOR_MEASURE  = 100E3;
 
-const int ANGLE_OPEN   = 100;
-const int ANGLE_CLOSED = 20;
+const int ANGLE_OPEN   = 150;
+const int ANGLE_CLOSED = 80;
 
 // pin definitions (GPIO0-GPIO15 all have internal pull-ups)
 const int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
@@ -220,9 +220,9 @@ void openHatch() {
   digitalWrite(pinServoPower,HIGH);
   servo.attach(pinServoCtrl);
   
-  for(int angle=ANGLE_CLOSED ; angle<=ANGLE_OPEN ; angle += 10) {
+  for(int angle=ANGLE_CLOSED ; angle<=ANGLE_OPEN ; angle += 5) {
     servo.write(angle);
-    delay(100);
+    delay(200);
   }
 
   digitalWrite(pinServoPower,LOW);
@@ -247,9 +247,9 @@ void closeHatch() {
   digitalWrite(pinServoPower,HIGH);
   servo.attach(pinServoCtrl);
 
-  for(int angle=ANGLE_OPEN ; angle>=ANGLE_CLOSED ; angle -= 10) {
+  for(int angle=ANGLE_OPEN ; angle>=ANGLE_CLOSED ; angle -= 5) {
     servo.write(angle);
-    delay(100);
+    delay(200);
   }  
 
   digitalWrite(pinServoPower,LOW);

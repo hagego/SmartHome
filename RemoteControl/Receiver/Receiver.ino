@@ -1,6 +1,9 @@
-/**
- * 
- */
+// Uses RadioHead library: http://www.airspayce.com/mikem/arduino/RadioHead/index.html
+// download from: http://www.airspayce.com/mikem/arduino/RadioHead/RadioHead-1.113.zip
+// but library needed a patch: comment out line 12 in RHSoftwareSPI.cpp
+// default pin assignment in constructor of RHSoftwareSPI
+
+
 #include <RHSoftwareSPI.h>
 #include <RH_NRF24.h>
 
@@ -18,7 +21,7 @@
   const int PIN_LED   = LED_BUILTIN;
   const int LED_ON    = LOW;
   const int LED_OFF   = HIGH;
-  const int PIN_POWER = 5;
+  const int PIN_POWER = 5; // D1 mini D1 = gpio5
   
 #elif defined (__AVR_ATtiny85__) 
 
@@ -45,15 +48,17 @@
 
 #endif
 
-
 // use software SPI in order to run on both ESP8266 and ATTiny85
 RHSoftwareSPI swSPI;
 
 // instance of the radio driver
 RH_NRF24 nrf24(NRF204_PIN_CE,NRF204_PIN_CSN,swSPI);
 
-// last received command
-uint8_t command = 0;
+const uint8_t CMD_NONE = 0;
+const uint8_t CMD_ON   = 1;
+const uint8_t CMD_OFF  = 2;
+
+uint8_t command = CMD_NONE;
 
  
 void setup() 
@@ -65,7 +70,7 @@ void setup()
   
   #ifdef DEBUG_SERIAL
   Serial.begin(115200);
-  Serial.println("setup started");
+  Serial.println("\nsetup started");
   #endif
 
   #if defined (__AVR_ATtiny85__)
@@ -106,10 +111,12 @@ void loop()
   #ifdef DEBUG_SERIAL
     Serial.println("starting loop again"); 
   #endif
+  command = CMD_NONE;
 
+  // short between NRF204_PIN_MOSI and PIN_POWER on breadboard
   #if defined (ESP8266)
-    // short between NRF204_PIN_MOSI and PIN_POWER on breadboard
     pinMode(PIN_POWER,INPUT);
+    pinMode(NRF204_PIN_MOSI,OUTPUT);
   #endif
   
   // available puts chip into RX mode again
@@ -132,7 +139,11 @@ void loop()
         Serial.print("received command: ");
         Serial.println(command);
       #endif
+
+      // flush receive buffer
+      while (nrf24.recv(buf, &len) && len>0) {}
       
+      // power down the radio again
       nrf24.setModeIdle();
 
       #ifdef DEBUG_LED
@@ -143,9 +154,10 @@ void loop()
   #if defined (ESP8266)
     // short between NRF204_PIN_MOSI and PIN_POWER on breadboard
     pinMode(PIN_POWER,OUTPUT);
+    pinMode(NRF204_PIN_MOSI,INPUT);
   #endif
 
-  if(command==1) {
+  if(command==CMD_ON) {
     #ifdef DEBUG_LED
       digitalWrite(PIN_LED, LED_ON);
     #endif
@@ -156,7 +168,7 @@ void loop()
 
     digitalWrite(PIN_POWER,HIGH);
   }
-  else {
+  if(command==CMD_OFF) {
     #ifdef DEBUG_LED
       digitalWrite(PIN_LED, LED_OFF);
     #endif
@@ -179,6 +191,7 @@ void loop()
     delay(8000);
   #endif
 }
+
 
 void flashLed(int count) {
   #ifdef DEBUG_LED

@@ -35,6 +35,9 @@ const uint8_t CMD_NONE = 0;
 const uint8_t CMD_ON   = 1;
 const uint8_t CMD_OFF  = 2;
 
+const uint8_t HEADER_LENGTH = 3;
+const uint8_t HEADER_BYTE   = 0x55;
+
 uint8_t command = CMD_NONE;
 
 
@@ -80,8 +83,11 @@ void setup()
     Serial.println("Sending command 10x");
 
     // Send a message to nrf24_server
-    uint8_t data[1];
-    data[0] = command;
+    uint8_t data[HEADER_LENGTH+1];
+    for(uint8_t i=0 ; i<HEADER_LENGTH ; i++) {
+      data[i] = HEADER_BYTE;
+    }
+    data[HEADER_LENGTH] = command;
   
     // send command for 10 seconds
     for (int i = 0 ; i < 10 ; i++) {

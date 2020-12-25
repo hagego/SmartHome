@@ -35,11 +35,14 @@
   const int NRF204_PIN_MISO = 4; // gpio4 = pin 3 on ATtiny85 (maps to D1 mini D6)
   const int NRF204_PIN_SCK  = 3; // gpio3 = pin 2 on ATtiny85 (maps to D1 mini D5)
 
-  const int PIN_LED   = 1;      // connected to built-in LED on Digispark boards
+  const int PIN_LED   = 1;       // connected to built-in LED on Digispark boards
   const int LED_ON    = HIGH;
   const int LED_OFF   = LOW;
-  const int PIN_POWER = 1;
-
+  //const int PIN_POWER = 1;     // option 1: share with MOSI - but will lead to lots of short power on/off
+  const int PIN_POWER = 5;       // option 1: use gpio 5 / pin 1 which is per default used as reset
+                                 // need to blow fuses first, see e.g. http://thetoivonen.blogspot.com/2015/12/fixing-pin-p5-or-6-on-digispark-clones.html
+                                 // ~/.arduino15/packages/arduino/tools/avrdude/6.3.0-arduino17$ bin/avrdude -C etc/avrdude.conf -P /dev/ttyACM0 -b 19200 -c avrisp -p attiny85 -U hfuse:w:0x5F:m
+ 
   #define adc_disable() (ADCSRA &= ~(1<<ADEN)) // disable ADC (before power-off)
   
 #else
@@ -57,6 +60,9 @@ RH_NRF24 nrf24(NRF204_PIN_CE,NRF204_PIN_CSN,swSPI);
 const uint8_t CMD_NONE = 0;
 const uint8_t CMD_ON   = 1;
 const uint8_t CMD_OFF  = 2;
+
+const uint8_t HEADER_LENGTH = 3;
+const uint8_t HEADER_BYTE   = 0x55;
 
 uint8_t command = CMD_NONE;
 
@@ -97,13 +103,15 @@ void setup()
 
     #ifdef DEBUG_LED
       flashLed(5);
-    #endif
+    #endif 
   }
   else {
     #ifdef DEBUG_SERIAL
       Serial.println("init failed"); 
     #endif
   }
+
+  command = CMD_NONE;
 }
  
 void loop()
@@ -111,7 +119,6 @@ void loop()
   #ifdef DEBUG_SERIAL
     Serial.println("starting loop again"); 
   #endif
-  command = CMD_NONE;
 
   // short between NRF204_PIN_MOSI and PIN_POWER on breadboard
   #if defined (ESP8266)
@@ -127,18 +134,38 @@ void loop()
     #endif
   
     // Should be a message for us now   
-    uint8_t buf[1];
+    uint8_t buf[HEADER_LENGTH+1];
     uint8_t len = sizeof(buf);
     
     if (nrf24.recv(buf, &len) && len>0)
     {
-      command = buf[0];
+      if(len == HEADER_LENGTH+1) {
+        boolean match = true;
+        for(uint8_t i=0 ; i<HEADER_LENGTH ; i++) {
+          if(buf[i]!=HEADER_BYTE) {
+            match = false;
+          }
+        }
+        if(match) {
+          command = buf[HEADER_LENGTH];
       
-      #ifdef DEBUG_SERIAL
-        nrf24.printBuffer("recived data: ", buf, len);
-        Serial.print("received command: ");
-        Serial.println(command);
-      #endif
+          #ifdef DEBUG_SERIAL
+            //nrf24.printBuffer("recived data: ", buf, len);
+            Serial.print("received command: ");
+            Serial.println(command);
+          #endif
+        }
+        else {
+          #ifdef DEBUG_SERIAL
+            Serial.println("invalid header"); 
+          #endif
+        }
+      }
+      else {
+        #ifdef DEBUG_SERIAL
+          Serial.println("invalid packet size"); 
+        #endif
+      }
 
       // flush receive buffer
       while (nrf24.recv(buf, &len) && len>0) {}

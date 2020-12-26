@@ -90,13 +90,13 @@ void setup()
     data[HEADER_LENGTH] = command;
   
     // send command for 10 seconds
-    for (int i = 0 ; i < 10 ; i++) {
+    for (int i = 0 ; i < 1000 ; i++) {
       Serial.print("Sending command: ");
       Serial.println(command);
   
       nrf24.send(data, sizeof(data));
       nrf24.waitPacketSent();
-      delay(1000);
+      delay(10);
     } 
   }
 

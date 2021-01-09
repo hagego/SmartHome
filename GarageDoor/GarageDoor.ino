@@ -35,7 +35,7 @@ const char* mqttTopicStatus      = "garage/doorServerStatus";
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 
 // MQTT ping interval (ms)
-const long mqttPingInterval = 60000;
+const long mqttPingInterval = 3600000;
 
 
 WiFiClient   wifiClient;

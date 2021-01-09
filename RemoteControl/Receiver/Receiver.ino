@@ -38,8 +38,8 @@
   const int PIN_LED   = 1;       // connected to built-in LED on Digispark boards
   const int LED_ON    = HIGH;
   const int LED_OFF   = LOW;
-  const int PIN_POWER = 1;     // option 1: share with MOSI - but will lead to lots of short power on/off
-  //const int PIN_POWER = 5;       // option 2: use gpio 5 / pin 1 which is per default used as reset
+  //const int PIN_POWER = 1;     // option 1: share with MOSI - but will lead to lots of short power on/off
+  const int PIN_POWER = 5;       // option 2: use gpio 5 / pin 1 which is per default used as reset
                                  // need to blow fuses first, see e.g. http://thetoivonen.blogspot.com/2015/12/fixing-pin-p5-or-6-on-digispark-clones.html
                                  // ~/.arduino15/packages/arduino/tools/avrdude/6.3.0-arduino17$ bin/avrdude -C etc/avrdude.conf -P /dev/ttyACM0 -b 19200 -c avrisp -p attiny85 -U hfuse:w:0x5F:m
  

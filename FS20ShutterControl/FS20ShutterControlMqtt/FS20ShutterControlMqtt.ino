@@ -114,7 +114,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
   }
 
-
   if(strcmp(topic,topicShutterControlRight)==0) {
     if(strncmp(payload,"0",length)==0) {
       Serial.println("opening shutter right");

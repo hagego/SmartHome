@@ -4,3 +4,5 @@ LedStripController/WifiInfo.h
 GarageDoor/.vscode/
 RabbitHatchDoor/RabbitHatchDoor/WifiInfo.h
 RabbitFeeder/RabbitFeeder/WifiInfo.h
+GarageDoorFingerprintSensor/GarageDoorFingerprintSensor/WifiInfo.h
+COSensor/WifiInfo.h

@@ -15,7 +15,7 @@
 #include <Servo.h>
 #include <DHT.h>
 
-// include WLAN authentification information
+// include WLAN authentification information/home/hagen/Maker/repos/SmartHome/RabbitHatchDoor/RabbitHatchDoor/WiFiInfo.h
 #include "WifiInfo.h"
 
 #ifndef WIFI_SSID
@@ -30,15 +30,15 @@ const char* password = WIFI_PSK;
 const char* mqtt_server = "192.168.178.27";
 
 // MQTT client name
-const char* mqtt_client = "rabbithutch";
+const char* mqtt_client = "rabbithutchdoor";
 
 // MQTT topics
-const char* topicTemperature = "rabbithutch/temperature";
-const char* topicVbat        = "rabbithutch/vbat";
-const char* topicDoor        = "rabbithutch/door";
-const char* topicAngle       = "rabbithutch/angle";
-const char* topicAngleOpen   = "rabbithutch/angleOpen";
-const char* topicAngleClose  = "rabbithutch/angleClose";
+const char* topicTemperature = "rabbithutchdoor/temperature";
+const char* topicVbat        = "rabbithutchdoor/vbat";
+const char* topicDoor        = "rabbithutchdoor/door";
+const char* topicAngle       = "rabbithutchdoor/angle";
+const char* topicAngleOpen   = "rabbithutchdoor/angleOpen";
+const char* topicAngleClose  = "rabbithutchdoor/angleClose";
 
 // EEPROM addresses
 const int EEPROM_SIZE                = 16;
@@ -46,7 +46,6 @@ const int EEPROM_SIZE                = 16;
 const int EEPROM_ANGLE_LAST          = 0;
 const int EEPROM_ANGLE_OPEN          = 1;
 const int EEPROM_ANGLE_CLOSE         = 2;
-const int EEPROM_TEMPERATURE_COUNTER = 3;
 
 // resistor values for battery voltage measurement
 const double ADC_RESISTOR_EXTERNAL = 1E6;
@@ -65,7 +64,7 @@ const int pinDHT22       = 13; // GPIO13 DHT22 data, D7 on D1 mini
 
 
 // deep sleep period
-const unsigned long SLEEP_PERIOD = 3600000000;
+const unsigned long SLEEP_PERIOD = 3600000000; // unit is ns => 1h
 
 
 void callback(char* topic, byte* payload, unsigned int length);
@@ -75,44 +74,50 @@ int  controlServo(int angle);
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+Servo servo;
   
 void setup() {
-  // setup serial
-  Serial.begin(115200);
-  delay(10);
-  Serial.println();
-  Serial.println();
-  Serial.println("RabbitHatchDoor started");
+  pinMode(pinServoPower, OUTPUT);
+  digitalWrite(pinServoPower,LOW);
 
   // check local push buttons for manual control
   bool localControl = false;
   int  newAngle = -1;
   char localCmd[10];
-
-  pinMode(pinServoPower, OUTPUT);
-  digitalWrite(pinServoPower,LOW);
   
   pinMode(pinManualOpen, INPUT_PULLUP);
   pinMode(pinManualClose, INPUT_PULLUP);
-  delay(200);
+  delay(10)                                                                                                                                                                                                                                                                         ;
     
   if(digitalRead(pinManualOpen) == LOW){ 
-    Serial.println("push button manual open pressed");
     localControl = true;
     strcpy(localCmd,"open");
-    newAngle = processCmd(localCmd);
   }
   if(digitalRead(pinManualClose) == LOW){ 
-    Serial.println("push button manual close pressed");
     localControl = true;
     strcpy(localCmd,"close");
+  }
+
+  // setup serial
+  Serial.begin(115200);
+  delay(10);
+  Serial.println();
+  Serial.println();
+  Serial.println(F("RabbitHatchDoor started"));
+
+  EEPROM.begin(EEPROM_SIZE);
+
+  if(localControl) {
+    Serial.print(F("push button pressed, cmd="));
+    Serial.println(localCmd);
     newAngle = processCmd(localCmd);
   }
   
   // Connect to WiFi network
   WiFi.disconnect();
   WiFi.mode(WIFI_STA);
-  Serial.print("Connecting to SID ");
+  Serial.print(F("Connecting to SID "));
   Serial.println(SSID);
   WiFi.begin(SSID, password);
 
@@ -125,11 +130,11 @@ void setup() {
   }
 
   if(counter>=COUNTER_MAX) {
-    Serial.print("Connection failed - sleeping again");
+    Serial.print(F("Connection failed - sleeping again"));
     ESP.deepSleep(SLEEP_PERIOD);
   }
   Serial.println("");
-  Serial.print("Connected to WiFi, IP address=");
+  Serial.print(F("Connected to WiFi, IP address="));
   Serial.println(WiFi.localIP());
 
   client.setServer(mqtt_server, 1883);
@@ -138,7 +143,7 @@ void setup() {
   char buffer[128];
   sprintf(buffer,"%s-%d",mqtt_client,ESP.getChipId());
   
-  Serial.print("Attempting MQTT connection to broker at ");
+  Serial.print(F("Attempting MQTT connection to broker at "));
   Serial.print(mqtt_server);
   Serial.print(" as client ");
   Serial.println(buffer);
@@ -182,18 +187,8 @@ void setup() {
     client.publish(topicVbat, buffer);
 
     // now measure temperature
-    /*
-    EEPROM.begin(16);
-    byte value = EEPROM.read(EEPROM_TEMPERATURE_COUNTER);
-    if(value >= TEMPERATURE_MEASURE_FREQUENCY) {
-      Serial.println("triggering temperature measure");
-      readTemperature();
-      value = 0;
-    }
-    value++;
-    EEPROM.write(EEPROM_TEMPERATURE_COUNTER,value);
-    EEPROM.end();
-    */
+    Serial.println(F("triggering temperature measure"));
+    readTemperature();
 
     for(int i=0 ; i<20 ; i++) {
       client.loop();
@@ -208,6 +203,9 @@ void setup() {
     Serial.print(client.state());
   }
 
+  Serial.println(F("committing EEPROM data"));
+  EEPROM.end();
+  
   Serial.print("sleeping ");
   Serial.print(SLEEP_PERIOD/1000000UL);
   Serial.println("s");
@@ -248,33 +246,31 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   
   if(strcmp(topic,topicAngleOpen)==0) {
-    EEPROM.begin(EEPROM_SIZE);
     byte angle = (byte)atoi(payloadString);
     Serial.print("recived angleOpen: ");
-    Serial.println((int)angle);
+    Serial.println(angle);
 
-    int oldAngle = EEPROM.read(EEPROM_ANGLE_OPEN);
+    byte oldAngle = EEPROM.read(EEPROM_ANGLE_OPEN);
+    Serial.print("old angleOpen in EEPROM: ");
+    Serial.println(oldAngle);
     if(angle!=oldAngle) {
       Serial.println("Storing angleOpen in EEPROM");
       EEPROM.write(EEPROM_ANGLE_OPEN,angle);
-      EEPROM.commit();
     }
-    EEPROM.end();
   }
   
   if(strcmp(topic,topicAngleClose)==0) {
-    EEPROM.begin(EEPROM_SIZE);
     byte angle = (byte)atoi(payloadString);
     Serial.print("recived angleClose: ");
     Serial.println((int)angle);
 
-    int oldAngle = EEPROM.read(EEPROM_ANGLE_CLOSE);
+    byte oldAngle = EEPROM.read(EEPROM_ANGLE_CLOSE);
+    Serial.print("old angleClose in EEPROM: ");
+    Serial.println(oldAngle);
     if(angle!=oldAngle) {
       Serial.println("Storing angleClose in EEPROM");
       EEPROM.write(EEPROM_ANGLE_CLOSE,angle);
-      EEPROM.commit();
     }
-    EEPROM.end();
   }
 }
 
@@ -286,16 +282,15 @@ int processCmd(String cmd) {
     return -1;
   }
 
-  EEPROM.begin(EEPROM_SIZE);
   if(cmd == "open") {
-    int angle = EEPROM.read(EEPROM_ANGLE_OPEN);
+    byte angle = EEPROM.read(EEPROM_ANGLE_OPEN);
     Serial.print("received door open, angle open=");
     Serial.println(angle);
     return controlServo(angle);
   }
 
   if(cmd == "close") {
-    int angle = EEPROM.read(EEPROM_ANGLE_CLOSE);
+    byte angle = EEPROM.read(EEPROM_ANGLE_CLOSE);
     Serial.print("received door close, angle close=");
     Serial.println(angle);
     return controlServo(angle);
@@ -310,10 +305,10 @@ int processCmd(String cmd) {
 
 // returns -1 if position was not changes
 // otherwise returns new angle
-int controlServo(int angle) { 
-  int oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
+int controlServo(byte angle) { 
+  byte oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
 
-  Serial.print("old angle: ");
+  Serial.print("old angle read from EEPROM: ");
   Serial.println(oldAngle);
   Serial.print("new angle: ");
   Serial.println(angle);
@@ -334,7 +329,6 @@ int controlServo(int angle) {
     return -1;
   }
 
-  Servo servo;
   servo.attach(pinServoCtrl);
   servo.write(oldAngle);
   delay(100);
@@ -346,6 +340,7 @@ int controlServo(int angle) {
   delay(100);
     
   digitalWrite(pinServoPower,HIGH);
+  delay(200);
       
   if(angle>oldAngle) {
     for(int i=oldAngle ; i<angle ; i+=5) {
@@ -362,9 +357,9 @@ int controlServo(int angle) {
   
   servo.write(angle);
 
-  EEPROM.begin(EEPROM_SIZE);
+  Serial.print(F("storing angle in EEPROM: "));
+  Serial.println(angle);
   EEPROM.write(EEPROM_ANGLE_LAST,angle);  
-  EEPROM.end();
   
   digitalWrite(pinServoPower,LOW);
   delay(500);
@@ -380,6 +375,11 @@ void readTemperature()
     pinMode(pinDHT22, OUTPUT);
     digitalWrite(pinDHT22,LOW);
     delay(100);
+
+    // ensure servo position is programmed to old value before power is turned on
+    byte oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
+    servo.attach(pinServoCtrl);
+    servo.write(oldAngle);
 
     digitalWrite(pinServoPower,HIGH);
     delay(1000);

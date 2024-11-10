@@ -9,6 +9,9 @@
 
 #define MQTT_VERSION MQTT_VERSION_3_1
 
+#define MEASURE_VBAT
+#define MEASURE_TEMP
+
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
@@ -23,8 +26,8 @@
 #define WIFI_PSK  "my_psk"
 #endif
 
-const char* SSID     = WIFI_SSID;
-const char* password = WIFI_PSK;
+// speed of serial interface for debug messages
+#define SERIAL_SPEED 74880
 
 // MQTT broker IP address
 const char* mqtt_server = "192.168.178.27";
@@ -33,27 +36,33 @@ const char* mqtt_server = "192.168.178.27";
 const char* mqtt_client = "rabbithutchdoor";
 
 // MQTT topics
-const char* topicTemperature = "rabbithutchdoor/temperature";
-const char* topicVbat        = "rabbithutchdoor/vbat";
-const char* topicDoor        = "rabbithutchdoor/door";
-const char* topicAngle       = "rabbithutchdoor/angle";
-const char* topicAngleOpen   = "rabbithutchdoor/angleOpen";
-const char* topicAngleClose  = "rabbithutchdoor/angleClose";
+// publish
+const char* topicConnected        = "rabbithutchdoor/connected";
+const char* topicDoorCmdReceived  = "rabbithutchdoor/doorCmdReceived";
+const char* topicTemperature      = "rabbithutchdoor/temperature";
+const char* topicVbat             = "rabbithutchdoor/vbat";
+const char* topicAngle            = "rabbithutchdoor/angle";
+const char* topicAngleLocal       = "rabbithutchdoor/local";
+const char* topicServoChanged     = "rabbithutchdoor/servoChanged";
+const char* topicDoorStatus       = "rabbithutchdoor/doorStatus";
+
+// subscribed
+const char* topicSubscribedDoor        = "rabbithutchdoor/door";
+const char* topicSubscribedAngleOpen   = "rabbithutchdoor/angleOpen";
+const char* topicSubscribedAngleClose  = "rabbithutchdoor/angleClose";
+const char* topicSubscribedSleepPeriod = "rabbithutchdoor/sleepPeriod";
 
 // EEPROM addresses
-const int EEPROM_SIZE                = 16;
+const int EEPROM_SIZE                = 1024;
 
 const int EEPROM_ANGLE_LAST          = 0;
 const int EEPROM_ANGLE_OPEN          = 1;
 const int EEPROM_ANGLE_CLOSE         = 2;
 
 // resistor values for battery voltage measurement
-const double ADC_RESISTOR_EXTERNAL = 1E6;
+const double ADC_RESISTOR_EXTERNAL = 470E3;
 const double ADC_RESISTOR_INTERNAL = 220E3;
 const double ADC_RESISTOR_MEASURE  = 100E3;
-
-// temperature measure frequency
-byte TEMPERATURE_MEASURE_FREQUENCY = 2;  // measure every 2nd wake-up
 
 // pin definitions (GPIO0-GPIO15 all have internal pull-ups)
 const int pinServoCtrl   = 4;  // GPIO04 servo control, D2 on D1 mini
@@ -63,24 +72,48 @@ const int pinManualClose = 12; // GPIO12 connects key to manually close, D6 on D
 const int pinDHT22       = 13; // GPIO13 DHT22 data, D7 on D1 mini
 
 
-// deep sleep period
-const unsigned long SLEEP_PERIOD = 3600000000; // unit is ns => 1h
+// default deep sleep period
+// can be overridden thru MQTT topic topicSubscribedSleepPeriod
+unsigned long SLEEP_PERIOD = 3600000000; // unit is us => 1h
 
 
 void callback(char* topic, byte* payload, unsigned int length);
 int  processCmd(String cmd);
-int  controlServo(int angle);
+int  controlServo(byte angle);
+
+boolean servoChanged = false;
+String  doorStatus;
 
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+// code found on https://github.com/esp8266/Arduino/issues/6318
+// ESP.deepSleep() not workin reliable on all modules
+uint32_t*RT= (uint32_t *)0x60000700;
 
-Servo servo;
+void DeepSleepNK(uint64 t_us)
+{
+    RT[4] = 0;
+    *RT = 0;
+    RT[1]=100;
+    RT[3] = 0x10010;
+    RT[6] = 8;
+    RT[17] = 4;
+    RT[2] = 1<<20;
+    ets_delay_us(10);
+    RT[1]=t_us>>3;
+    RT[3] = 0x640C8;
+    RT[4]= 0;
+    RT[6] = 0x18;
+    RT[16] = 0x7F;
+    RT[17] = 0x20;
+    RT[39] = 0x11;
+    RT[40] = 0x03;
+    RT[2] |= 1<<20;
+    __asm volatile ("waiti 0");
+}
+
+PubSubClient* pClient = 0L;
   
 void setup() {
-  pinMode(pinServoPower, OUTPUT);
-  digitalWrite(pinServoPower,LOW);
-
   // check local push buttons for manual control
   bool localControl = false;
   int  newAngle = -1;
@@ -88,7 +121,7 @@ void setup() {
   
   pinMode(pinManualOpen, INPUT_PULLUP);
   pinMode(pinManualClose, INPUT_PULLUP);
-  delay(10)                                                                                                                                                                                                                                                                         ;
+  delay(1)                                                                                                                                                                                                                                                                         ;
     
   if(digitalRead(pinManualOpen) == LOW){ 
     localControl = true;
@@ -99,8 +132,18 @@ void setup() {
     strcpy(localCmd,"close");
   }
 
+  pinMode(pinDHT22, INPUT_PULLUP);
+  pinMode(pinServoPower, OUTPUT);
+  digitalWrite(pinServoPower,LOW);
+
+  pinMode(D0, WAKEUP_PULLUP);
+
+  WiFiClient espClient;
+  PubSubClient client(espClient);
+  pClient = &client;
+
   // setup serial
-  Serial.begin(115200);
+  Serial.begin(SERIAL_SPEED);
   delay(10);
   Serial.println();
   Serial.println();
@@ -118,21 +161,25 @@ void setup() {
   WiFi.disconnect();
   WiFi.mode(WIFI_STA);
   Serial.print(F("Connecting to SID "));
-  Serial.println(SSID);
-  WiFi.begin(SSID, password);
+  Serial.println(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PSK);
 
-  static int COUNTER_MAX = 20;
+  static int COUNTER_MAX = 100;
   int counter = 0;
   while (WiFi.status() != WL_CONNECTED && counter<COUNTER_MAX) {
-    delay(500);
+    delay(100);
     Serial.print(".");
     counter++;
   }
 
   if(counter>=COUNTER_MAX) {
-    Serial.print(F("Connection failed - sleeping again"));
-    ESP.deepSleep(SLEEP_PERIOD);
+    Serial.print(F("Connection failed - committing EEPROM data and sleeping again"));
+    EEPROM.end();
+
+    //ESP.deepSleep(SLEEP_PERIOD);
+    DeepSleepNK(SLEEP_PERIOD);
   }
+
   Serial.println("");
   Serial.print(F("Connected to WiFi, IP address="));
   Serial.println(WiFi.localIP());
@@ -150,16 +197,15 @@ void setup() {
     
   // Attempt to connect
   if (client.connect(buffer)) {
-    Serial.println("connected");
+    Serial.println(F("connected"));
     // Once connected, publish an announcement...
-    client.publish("rabbithutch/connect", "connected");
+    client.publish(topicConnected, "connected");
 
     if(localControl) {
-      client.publish("rabbithutch/local", localCmd);
+      client.publish(topicAngleLocal, localCmd);
 
       // and publish new angle to MQTT broker
       if(newAngle>=0) {
-        char buffer[200];
         sprintf(buffer,"publishing to topic %s : %d",topicAngle,newAngle);
         Serial.println(buffer);
         sprintf(buffer,"%d",newAngle);
@@ -167,32 +213,43 @@ void setup() {
       }
     }
     else {
-      // subscribe to opic and check for retained publications
-      client.subscribe(topicDoor);
-      client.subscribe(topicAngleOpen);
-      client.subscribe(topicAngleClose);
+      // subscribe to topics and check for retained publications
+      client.subscribe(topicSubscribedDoor);
+      client.subscribe(topicSubscribedAngleOpen);
+      client.subscribe(topicSubscribedAngleClose);
+      client.subscribe(topicSubscribedSleepPeriod);
     }
 
+    #ifdef MEASURE_VBAT
     // measure battery voltage and publish
+    delay(100);
     int adcValue = analogRead(A0);
-    Serial.print("ADC value: ");
+    Serial.print(F("ADC value: "));
     Serial.println(adcValue);
     double vbat = ((double)adcValue/1023.0)*(ADC_RESISTOR_MEASURE+ADC_RESISTOR_INTERNAL+ADC_RESISTOR_EXTERNAL)/ADC_RESISTOR_MEASURE;
-    Serial.print("battery voltage [V]: ");
+    Serial.print(F("battery voltage [V]: "));
     Serial.println(vbat);
-    char buffer[100];
     sprintf(buffer,"publishing to topic %s : %f",topicVbat,vbat);
     Serial.println(buffer);
     sprintf(buffer,"%f",vbat);
     client.publish(topicVbat, buffer);
+    #endif
 
     // now measure temperature
+    #ifdef MEASURE_TEMP
     Serial.println(F("triggering temperature measure"));
     readTemperature();
+    #endif
 
+    // give enough time to receive MQTT publications
     for(int i=0 ; i<20 ; i++) {
       client.loop();
       delay(100);      
+    }
+
+    if(servoChanged) {
+      client.publish(topicServoChanged, "true");
+      client.publish(topicDoorStatus, doorStatus.c_str());
     }
     
     client.disconnect();
@@ -205,14 +262,21 @@ void setup() {
 
   Serial.println(F("committing EEPROM data"));
   EEPROM.end();
+
+  digitalWrite(pinServoPower,LOW);
   
   Serial.print("sleeping ");
   Serial.print(SLEEP_PERIOD/1000000UL);
   Serial.println("s");
+
+  // ensure EEPROM data could be written
+  delay(500);
+
   // wake-up of deep sleep mode requires connection between GPIO16 (D0 on Mini 1)
   // and RST and is actually a reset of the chip
-  pinMode(D0, WAKEUP_PULLUP);
-  ESP.deepSleep(SLEEP_PERIOD,RF_CAL);
+  //ESP.deepSleep(SLEEP_PERIOD,WAKE_RF_DISABLED);
+
+  DeepSleepNK(SLEEP_PERIOD);
 }
 
 void loop() {
@@ -232,34 +296,42 @@ void callback(char* topic, byte* payload, unsigned int length) {
   strncpy(payloadString,(char*)payload,length);
   payloadString[length] = 0;
     
-  if(strcmp(topic,topicDoor)==0) {
-    int newAngle = processCmd(payloadString);
+  if(strcmp(topic,topicSubscribedDoor)==0) {
+    pClient->publish(topicDoorCmdReceived, payloadString);
 
-    if(newAngle >= 0 ) {
+    // clear retained message
+    pClient->publish(topicSubscribedDoor,"",true);
+    
+    int newAngleRemote = processCmd(payloadString);
+
+    if(newAngleRemote >= 0 ) {
       // publish new angle to MQTT broker
       char buffer[200];
-      sprintf(buffer,"publishing to topic %s : %d",topicAngle,newAngle);
+      sprintf(buffer,"publishing to topic %s : %d",topicAngle,newAngleRemote);
       Serial.println(buffer);
-      sprintf(buffer,"%d",newAngle);
-      client.publish(topicAngle, buffer);
+      sprintf(buffer,"%d",newAngleRemote);
+      pClient->publish(topicAngle, buffer);
     }
   }
   
-  if(strcmp(topic,topicAngleOpen)==0) {
+  if(strcmp(topic,topicSubscribedAngleOpen)==0) {
     byte angle = (byte)atoi(payloadString);
     Serial.print("recived angleOpen: ");
     Serial.println(angle);
 
     byte oldAngle = EEPROM.read(EEPROM_ANGLE_OPEN);
-    Serial.print("old angleOpen in EEPROM: ");
+    Serial.print(F("old angleOpen in EEPROM: "));
     Serial.println(oldAngle);
     if(angle!=oldAngle) {
       Serial.println("Storing angleOpen in EEPROM");
       EEPROM.write(EEPROM_ANGLE_OPEN,angle);
+      bool commit=EEPROM.commit();
+      Serial.print(F("EEPROM commit result: "));
+      Serial.println(commit);
     }
   }
   
-  if(strcmp(topic,topicAngleClose)==0) {
+  if(strcmp(topic,topicSubscribedAngleClose)==0) {
     byte angle = (byte)atoi(payloadString);
     Serial.print("recived angleClose: ");
     Serial.println((int)angle);
@@ -270,42 +342,66 @@ void callback(char* topic, byte* payload, unsigned int length) {
     if(angle!=oldAngle) {
       Serial.println("Storing angleClose in EEPROM");
       EEPROM.write(EEPROM_ANGLE_CLOSE,angle);
+      bool commit=EEPROM.commit();
+      Serial.print(F("EEPROM commit result: "));
+      Serial.println(commit);
     }
   }
+
+  // check for override of sleep period
+  if(strcmp(topic,topicSubscribedSleepPeriod)==0) {
+    byte sleepPeriodMinutes = (byte)atoi(payloadString);
+    Serial.print("recived sleepPeriod: ");
+    Serial.println((int)sleepPeriodMinutes);
+
+    SLEEP_PERIOD = (unsigned long)sleepPeriodMinutes*60L*1000000L;
+  }
+  
 }
 
 // returns -1 if position was not changes
 // otherwise returns new angle
 int processCmd(String cmd) {
+  if(cmd == "") {
+    Serial.println(F("clearing retained message"));
+    pClient->unsubscribe(topicSubscribedDoor);
+    return -1;
+  }
+
   if(cmd == "nothing") {
-    Serial.println("no action needed");
+    Serial.println(F("no action needed"));
     return -1;
   }
 
   if(cmd == "open") {
     byte angle = EEPROM.read(EEPROM_ANGLE_OPEN);
-    Serial.print("received door open, angle open=");
+    Serial.print(F("received door open, angle open="));
     Serial.println(angle);
+    doorStatus = "open";
     return controlServo(angle);
   }
 
   if(cmd == "close") {
     byte angle = EEPROM.read(EEPROM_ANGLE_CLOSE);
-    Serial.print("received door close, angle close=");
+    Serial.print(F("received door close, angle close="));
     Serial.println(angle);
+    doorStatus = "closed";
     return controlServo(angle);
   }
 
-  Serial.print("Unknown servo command: ");
+  Serial.print(F("Unknown servo command: "));
   Serial.println(cmd);
 
   return -1;
 }
 
 
-// returns -1 if position was not changes
+// returns -1 if position was not changed
 // otherwise returns new angle
-int controlServo(byte angle) { 
+// if angle==0, only old position is programmed
+int controlServo(byte angle) {
+  Servo servo;
+
   byte oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
 
   Serial.print("old angle read from EEPROM: ");
@@ -315,28 +411,22 @@ int controlServo(byte angle) {
 
   if(oldAngle>180) {
     oldAngle = 180;
-    Serial.println("correcting old angle to 180");
+    Serial.println(F("correcting old angle to 180"));
   }
 
   
   if(angle>180) {
     angle = 180;
-    Serial.println("correcting angle to 180");
-  }
-
-  if(angle==oldAngle) {
-    Serial.println("no change in door position");
-    return -1;
+    Serial.println(F("correcting angle to 180"));
   }
 
   servo.attach(pinServoCtrl);
   servo.write(oldAngle);
-  delay(100);
 
-  // make sure DHHT22 data pin is low during power enable
-  // otherwise COM port at PC gets reset - GND shifts ?
-  pinMode(pinDHT22, OUTPUT);
-  digitalWrite(pinDHT22,LOW);
+  if(angle==0 || angle==oldAngle) {
+    Serial.println(F("no change in door position"));
+    return -1;
+  }
   delay(100);
     
   digitalWrite(pinServoPower,HIGH);
@@ -356,40 +446,30 @@ int controlServo(byte angle) {
   }
   
   servo.write(angle);
+  servoChanged = true;
 
   Serial.print(F("storing angle in EEPROM: "));
   Serial.println(angle);
   EEPROM.write(EEPROM_ANGLE_LAST,angle);  
   
-  digitalWrite(pinServoPower,LOW);
-  delay(500);
-
   return angle;
 }
 
 // read temperature on DHT22 (AM2302)
+#ifdef MEASURE_VBAT
 void readTemperature()
 {
-    // make sure DHHT22 data pin is low during power enable
-    // otherwise COM port at PC gets reset - GND shifts ?
-    pinMode(pinDHT22, OUTPUT);
-    digitalWrite(pinDHT22,LOW);
-    delay(100);
-
     // ensure servo position is programmed to old value before power is turned on
-    byte oldAngle = EEPROM.read(EEPROM_ANGLE_LAST);
-    servo.attach(pinServoCtrl);
-    servo.write(oldAngle);
+    controlServo(0);
 
     digitalWrite(pinServoPower,HIGH);
     delay(1000);
     
     DHT dht(pinDHT22,DHT22); 
     dht.begin();
+    delay(100);
 
     float t = dht.readTemperature();
-
-    digitalWrite(pinServoPower,LOW);
     
     Serial.print("temperature: ");
     Serial.println(t);
@@ -397,9 +477,10 @@ void readTemperature()
     // and publish to MQTT broker
     char buffer[10];
     sprintf(buffer,"%.1f",t);
-    client.publish(topicTemperature, buffer);
+    pClient->publish(topicTemperature, buffer);
     Serial.print("publishing to topic ");
     Serial.print(topicTemperature);
     Serial.print(": ");
     Serial.println(buffer);
 }
+#endif

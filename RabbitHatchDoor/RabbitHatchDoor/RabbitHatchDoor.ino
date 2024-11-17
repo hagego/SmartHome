@@ -43,7 +43,6 @@ const char* topicTemperature      = "rabbithutchdoor/temperature";
 const char* topicVbat             = "rabbithutchdoor/vbat";
 const char* topicAngle            = "rabbithutchdoor/angle";
 const char* topicAngleLocal       = "rabbithutchdoor/local";
-const char* topicServoChanged     = "rabbithutchdoor/servoChanged";
 const char* topicDoorStatus       = "rabbithutchdoor/doorStatus";
 
 // subscribed
@@ -91,24 +90,33 @@ uint32_t*RT= (uint32_t *)0x60000700;
 
 void DeepSleepNK(uint64 t_us)
 {
-    RT[4] = 0;
-    *RT = 0;
-    RT[1]=100;
-    RT[3] = 0x10010;
-    RT[6] = 8;
-    RT[17] = 4;
-    RT[2] = 1<<20;
-    ets_delay_us(10);
-    RT[1]=t_us>>3;
-    RT[3] = 0x640C8;
-    RT[4]= 0;
-    RT[6] = 0x18;
-    RT[16] = 0x7F;
-    RT[17] = 0x20;
-    RT[39] = 0x11;
-    RT[40] = 0x03;
-    RT[2] |= 1<<20;
-    __asm volatile ("waiti 0");
+  //Serial.println(F("Entering DeepSleep"));
+  //delay(500);
+
+  //wifi_set_sleep_type(MODEM_SLEEP_T);
+  //system_deep_sleep_set_option(2); // no RF calibration after wake-up
+  //system_deep_sleep_instant(t_us);
+  //Serial.println(F("after system_deep_sleep"));
+  //delay(500);
+
+  RT[4] = 0;
+  *RT = 0;
+  RT[1]=100;
+  RT[3] = 0x10010;
+  RT[6] = 8;
+  RT[17] = 4;
+  RT[2] = 1<<20;
+  ets_delay_us(10);
+  RT[1]=t_us>>3;
+  RT[3] = 0x640C8;
+  RT[4]= 0;
+  RT[6] = 0x18;
+  RT[16] = 0x7F;
+  RT[17] = 0x20;
+  RT[39] = 0x11;
+  RT[40] = 0x03;
+  RT[2] |= 1<<20;
+  __asm volatile ("waiti 0");
 }
 
 PubSubClient* pClient = 0L;
@@ -138,13 +146,9 @@ void setup() {
 
   pinMode(D0, WAKEUP_PULLUP);
 
-  WiFiClient espClient;
-  PubSubClient client(espClient);
-  pClient = &client;
-
   // setup serial
   Serial.begin(SERIAL_SPEED);
-  delay(10);
+  delay(100);
   Serial.println();
   Serial.println();
   Serial.println(F("RabbitHatchDoor started"));
@@ -158,7 +162,7 @@ void setup() {
   }
   
   // Connect to WiFi network
-  WiFi.disconnect();
+  //WiFi.disconnect();
   WiFi.mode(WIFI_STA);
   Serial.print(F("Connecting to SID "));
   Serial.println(WIFI_SSID);
@@ -183,6 +187,10 @@ void setup() {
   Serial.println("");
   Serial.print(F("Connected to WiFi, IP address="));
   Serial.println(WiFi.localIP());
+
+  WiFiClient espClient;
+  PubSubClient client(espClient);
+  pClient = &client;
 
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
@@ -248,7 +256,6 @@ void setup() {
     }
 
     if(servoChanged) {
-      client.publish(topicServoChanged, "true");
       client.publish(topicDoorStatus, doorStatus.c_str());
     }
     
@@ -286,7 +293,7 @@ void loop() {
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
-  Serial.print("] ");
+  Serial.print("] value=");
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
@@ -300,7 +307,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
     pClient->publish(topicDoorCmdReceived, payloadString);
 
     // clear retained message
-    pClient->publish(topicSubscribedDoor,"",true);
+    if(length>0) {
+      pClient->publish(topicSubscribedDoor,"",true);
+    }
     
     int newAngleRemote = processCmd(payloadString);
 

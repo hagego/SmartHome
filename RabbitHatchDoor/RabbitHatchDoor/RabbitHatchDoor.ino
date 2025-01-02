@@ -3,15 +3,16 @@
   querying an openhab server for commands
 */
 
-// mosquitto 1.3.4 speaks MQTT Version 3.1
-// change to MQTT_VERSION MQTT_VERSION_3_1_1 after upgrade to 1.3.5 or higher
-
-
-#define MQTT_VERSION MQTT_VERSION_3_1
-
 #define MEASURE_VBAT
 #define MEASURE_TEMP
+//#define MQTT_PREFIX "tempsensor/terrace/"
+#define MQTT_PREFIX "rabbithutchdoor/"
 
+// MQTT client name
+//const char* mqtt_client = "tempsensorterrace";
+const char* mqtt_client = "rabbithutchdoor";
+
+#include <math.h>
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
@@ -32,24 +33,21 @@
 // MQTT broker IP address
 const char* mqtt_server = "192.168.178.27";
 
-// MQTT client name
-const char* mqtt_client = "rabbithutchdoor";
-
 // MQTT topics
 // publish
-const char* topicConnected        = "rabbithutchdoor/connected";
-const char* topicDoorCmdReceived  = "rabbithutchdoor/doorCmdReceived";
-const char* topicTemperature      = "rabbithutchdoor/temperature";
-const char* topicVbat             = "rabbithutchdoor/vbat";
-const char* topicAngle            = "rabbithutchdoor/angle";
-const char* topicAngleLocal       = "rabbithutchdoor/local";
-const char* topicDoorStatus       = "rabbithutchdoor/doorStatus";
+const char* topicConnected        = MQTT_PREFIX "connected";
+const char* topicDoorCmdReceived  = MQTT_PREFIX "doorCmdReceived";
+const char* topicTemperature      = MQTT_PREFIX "temperature";
+const char* topicVbat             = MQTT_PREFIX "vbat";
+const char* topicAngle            = MQTT_PREFIX "angle";
+const char* topicAngleLocal       = MQTT_PREFIX "local";
+const char* topicDoorStatus       = MQTT_PREFIX "doorStatus";
 
 // subscribed
-const char* topicSubscribedDoor        = "rabbithutchdoor/door";
-const char* topicSubscribedAngleOpen   = "rabbithutchdoor/angleOpen";
-const char* topicSubscribedAngleClose  = "rabbithutchdoor/angleClose";
-const char* topicSubscribedSleepPeriod = "rabbithutchdoor/sleepPeriod";
+const char* topicSubscribedDoor        = MQTT_PREFIX "door";
+const char* topicSubscribedAngleOpen   = MQTT_PREFIX "angleOpen";
+const char* topicSubscribedAngleClose  = MQTT_PREFIX "angleClose";
+const char* topicSubscribedSleepPeriod = MQTT_PREFIX "sleepPeriod";
 
 // EEPROM addresses
 const int EEPROM_SIZE                = 1024;
@@ -59,7 +57,8 @@ const int EEPROM_ANGLE_OPEN          = 1;
 const int EEPROM_ANGLE_CLOSE         = 2;
 
 // resistor values for battery voltage measurement
-const double ADC_RESISTOR_EXTERNAL = 470E3;
+//const double ADC_RESISTOR_EXTERNAL = 1E6;
+const double ADC_RESISTOR_EXTERNAL =   1E6;
 const double ADC_RESISTOR_INTERNAL = 220E3;
 const double ADC_RESISTOR_MEASURE  = 100E3;
 
@@ -234,13 +233,21 @@ void setup() {
     int adcValue = analogRead(A0);
     Serial.print(F("ADC value: "));
     Serial.println(adcValue);
-    double vbat = ((double)adcValue/1023.0)*(ADC_RESISTOR_MEASURE+ADC_RESISTOR_INTERNAL+ADC_RESISTOR_EXTERNAL)/ADC_RESISTOR_MEASURE;
-    Serial.print(F("battery voltage [V]: "));
-    Serial.println(vbat);
-    sprintf(buffer,"publishing to topic %s : %f",topicVbat,vbat);
-    Serial.println(buffer);
-    sprintf(buffer,"%f",vbat);
-    client.publish(topicVbat, buffer);
+
+    if(adcValue<10) {
+      // no voltage measured, most likely chip is not on the application PCB
+      // do nothing
+      Serial.println(F("assuming chip is not on application board - doing nothing"));
+    }
+    else {
+      double vbat = ((double)adcValue/1023.0)*(ADC_RESISTOR_MEASURE+ADC_RESISTOR_INTERNAL+ADC_RESISTOR_EXTERNAL)/ADC_RESISTOR_MEASURE;
+      Serial.print(F("battery voltage [V]: "));
+      Serial.println(vbat);
+      sprintf(buffer,"publishing to topic %s : %f",topicVbat,vbat);
+      Serial.println(buffer);
+      sprintf(buffer,"%f",vbat);
+      client.publish(topicVbat, buffer);
+    }
     #endif
 
     // now measure temperature
@@ -479,17 +486,22 @@ void readTemperature()
     delay(100);
 
     float t = dht.readTemperature();
-    
-    Serial.print("temperature: ");
-    Serial.println(t);
 
-    // and publish to MQTT broker
-    char buffer[10];
-    sprintf(buffer,"%.1f",t);
-    pClient->publish(topicTemperature, buffer);
-    Serial.print("publishing to topic ");
-    Serial.print(topicTemperature);
-    Serial.print(": ");
-    Serial.println(buffer);
+    if(isnan(t)) {
+      Serial.println(F("temperature reading is nan - doing nothing"));
+    }
+    else {
+      Serial.print("temperature: ");
+      Serial.println(t);
+
+      // and publish to MQTT broker
+      char buffer[10];
+      sprintf(buffer,"%.1f",t);
+      pClient->publish(topicTemperature, buffer);
+      Serial.print("publishing to topic ");
+      Serial.print(topicTemperature);
+      Serial.print(": ");
+      Serial.println(buffer);
+    }
 }
 #endif

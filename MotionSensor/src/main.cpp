@@ -27,8 +27,7 @@ const char* mqttTopicPublishAlive              = MQTT_PREFIX "alive";           
 const char* mqttTopicPublishMotionDeteced      = MQTT_PREFIX "motionDetected";              // published after motion sensor status changed
 
 // gpio pin to read sensor level
-//#define SENSOR_PIN 5 // D1 mini D1
-#define SENSOR_PIN 4    // D1 mini D2
+#define SENSOR_PIN 5 // D1 mini D1
 
 // MQTT broker IP address
 const char* mqtt_server = "192.168.178.27";
@@ -103,9 +102,9 @@ void setup() {
 
 
 void loop() {
-    //Serial.println(F("next loop iteration"));
+  //Serial.println(F("next loop iteration"));
 
-    // reconnect to WIFI if needed
+  // reconnect to WIFI if needed
   while (WiFi.status() != WL_CONNECTED) {
     Serial.println("WIFI disconnected");
     WiFi.begin(WIFI_SSID, WIFI_PSK);
@@ -140,7 +139,7 @@ void loop() {
 
   // read out sensor level
   int motion = digitalRead(SENSOR_PIN);
-  sprintf(buffer,"motion signal: %d",motion);
+  //sprintf(buffer,"motion signal: %d",motion);
   //Serial.println(buffer);
 
   // publish motion signal status if changed

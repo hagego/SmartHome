@@ -7,3 +7,5 @@ RabbitFeeder/RabbitFeeder/WifiInfo.h
 GarageDoorFingerprintSensor/GarageDoorFingerprintSensor/WifiInfo.h
 COSensor/WifiInfo.h
 MotionSensor/include/WifiInfo.h
+SunshineChecker/include/WifiInfo.h
+UniversalServoSensor/include/WifiInfo.h

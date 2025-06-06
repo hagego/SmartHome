@@ -10,7 +10,7 @@
 #define MQTT_CLIENT_ID      "nRF24Receiver"              // client ID of the MQTT client
 #define MQTT_PREFIX         "nRF24Receiver/"             // prefix for all MQTT topics related to receiver
 #define MQTT_PREFIX_SENSOR  "sensor/livingroom/"         // prefix for all MQTT topics related to sensor measurements
-#define MQTT_PREFIX_MOTION1 "motionsensor/livingroom/"   // prefix for all MQTT topics related to motion detection
+#define MQTT_PREFIX_MOTION1 "motionsensor/entrance/"     // prefix for all MQTT topics related to motion detection on motion sensor 1
 
 // MQTT publish topics
 const char* topicPublishConnected       = MQTT_PREFIX "connected";       // gets published right after connect

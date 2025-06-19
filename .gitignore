@@ -9,3 +9,5 @@ COSensor/WifiInfo.h
 MotionSensor/include/WifiInfo.h
 SunshineChecker/include/WifiInfo.h
 UniversalServoSensor/include/WifiInfo.h
+nRF24/EspSender/include/WifiInfo.h
+nRF24/EspReceiver/include/WifiInfo.h

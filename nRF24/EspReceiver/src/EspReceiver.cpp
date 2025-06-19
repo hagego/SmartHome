@@ -1,5 +1,5 @@
 /**
- * @file main.cpp
+ * @file EspReceiver.cpp
  */
 
 #include <Arduino.h>
@@ -14,8 +14,39 @@
 #include "MqttInfo.h"
 
 
+// speed of serial interface for debug messages
+#define SERIAL_SPEED 74880
+ 
+ // nRF24 CE/CSN pins
+const uint8_t PIN_CE  = 15; // D8 on D1 mini (SPI CS)
+const uint8_t PIN_CSN = 0;  // D3 on D1 mini (GPIO0)
 
-/**
+ // local motion sensor pin
+const uint8_t PIN_MOTION_SENSOR = 16; // D0 on D1 mini (GPIO16)
+
+// nRF24 addresses to listen to
+// 0: hageg: generic
+// 1: 1moti: remote sensor 1
+// 2: 2moti: remote sensor 2
+uint8_t nRF24Addresses[][6] = {"hageg", "1moti", "2moti"};
+
+// nRF24 paload size
+const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
+
+ // global WiFi, MQTT, RF24 and Bsecs client objects
+WiFiClient   wifiClient;
+PubSubClient mqttClient(wifiClient);
+RF24         radio(PIN_CE, PIN_CSN);  // create an RF24 object, CE, CSN
+Bsec2        envSensor;
+
+ 
+ // global buffer object for sprinf and other string operations
+ char buffer[256];
+ 
+ // MQTT callback function
+ void mqttCallback(const char topic[], byte* payload, unsigned int length);
+
+ /**
  * @brief : This function checks the BSEC status, prints the respective error code. Halts in case of error
  * @param[in] bsec  : Bsec2 class object
  */
@@ -28,37 +59,13 @@ void checkBsecStatus(Bsec2 bsec);
  * @param[in] bsec      : Instance of BSEC2 calling the callback
  */
 void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bsec);
-
-
-
- // speed of serial interface for debug messages
- #define SERIAL_SPEED 74880
  
- // nRF24 CE/CSN pins
- const uint8_t PIN_CE  = 15; // D8 on D1 mini (SPI CS)
- const uint8_t PIN_CSN = 0;  // D3 on D1 mini (GPIO0)
- 
- // global WiFi, MQTT, RF24 and Bsecs client objects
- WiFiClient   wifiClient;
- PubSubClient mqttClient(wifiClient);
- RF24         radio(PIN_CE, PIN_CSN);  // create an RF24 object, CE, CSN
-Bsec2         envSensor;
-
- 
- // global buffer object
- char buffer[256];
- 
- // MQTT callback function
- void mqttCallback(const char topic[], byte* payload, unsigned int length);
- 
- // nRF24 addresses to listen to
-  // 0: hageg: generic
-  // 1: 1moti: motion sensor 1
-  // 2: 2moti: motion sensor 2
- uint8_t nRF24Addresses[][6] = {"hageg", "1moti", "2moti"};
  
 void setup() {
-  // put your setup code here, to run once:
+  // initialize GPIO pins
+  pinMode(PIN_MOTION_SENSOR, INPUT); // local motion sensor pin
+  
+  // initialize serial interface
   Serial.begin(SERIAL_SPEED);
   delay(100);
   Serial.println();
@@ -84,8 +91,7 @@ void setup() {
     ESP.restart();
   }
  
-  Serial.println("");
-  Serial.print(F("Connected to WiFi, IP address="));
+  Serial.print(F("\nConnected to WiFi, IP address="));
   Serial.println(WiFi.localIP());
  
   // connect to MQTT broker
@@ -123,7 +129,6 @@ void setup() {
           BSEC_OUTPUT_STATIC_IAQ,
           BSEC_OUTPUT_CO2_EQUIVALENT,
           BSEC_OUTPUT_BREATH_VOC_EQUIVALENT,
-          BSEC_OUTPUT_GAS_PERCENTAGE,
           BSEC_OUTPUT_COMPENSATED_GAS
   };
 
@@ -131,7 +136,7 @@ void setup() {
   Wire.begin();
   if (!envSensor.begin(BME68X_I2C_ADDR_HIGH, Wire))
   {
-      checkBsecStatus(envSensor);
+    checkBsecStatus(envSensor);
   }
 	
 	/*
@@ -159,13 +164,21 @@ void setup() {
     radio.openReadingPipe(i, nRF24Addresses[i]);
   }
 
-  radio.setPayloadSize(16);
-  radio.startListening();            // set module as receiver
- }
+  radio.setPayloadSize(nRF24PayloadSize);
+  radio.startListening();                   // set module as receiver
+
+  // trigger first BSEC run
+  if (!envSensor.run())
+  {
+    checkBsecStatus(envSensor);
+  }
+}
  
 // Main loop
-// use simple counter to send keepalive messages to MQTT broker roughly every half hour
-u32_t keepAliveCounter = 0;
+
+u32_t keepAliveCounter = 0;                // use simple counter to send keepalive messages to MQTT broker roughly every half hour
+u_int8_t oldLocalMotionSensorState = 0;    // used to detect changes in local motion sensor state
+
 void loop() {
   keepAliveCounter++;
 
@@ -204,24 +217,36 @@ void loop() {
 
   // check for data from motion sensor 1
   while(radio.available(nRF24Addresses[1])) {
-    char text[16] = {0};
+    char text[nRF24PayloadSize] = {0};
     radio.read(&text, sizeof(text));
-    Serial.print(F("nRF24 payload received from motion sensor 1: "));
+    Serial.print(F("nRF24 payload received from remote sensor 1: "));
     Serial.println(text);
 
     if(strncmp(text,"M",1)==0) {
-      Serial.println(F("Motion detected by motion sensor 1"));
-      mqttClient.publish(topicPublishMotion1Detected, "on");
+      Serial.println(F("Motion change detected by remote sensor 1"));
+      if(strlen(text)>2) {
+        if(text[2]=='1') {
+          Serial.println(F("Motion detected by remote sensor 1"));
+          mqttClient.publish(topicPublishRemoteSensor1MotionDetected, "on");
+        }
+        else if(text[2]=='0') {
+          Serial.println(F("motion off detected by remote sensor 1"));
+          mqttClient.publish(topicPublishRemoteSensor1MotionDetected, "off");
+        }
+        else {
+          Serial.println(F("Unknown motion state received from remote sensor 1"));
+        }
+      }
     }
 
     if(strncmp(text,"V",1)==0 && strlen(text)>2) {
-      Serial.println(F("Battery voltage reported by motion sensor 1"));
-      mqttClient.publish(topicPublishMotion1Voltage, text+2); // skip first two characters (V and colon)
+      Serial.println(F("Battery voltage reported by remote sensor 1"));
+      mqttClient.publish(topicPublishRemoteSensor1Voltage, text+2); // skip first two characters (V and colon)
     }
     
-    if((strncmp(text,"B",1)==0 || strncmp(text,"I",1)==0) && strlen(text)>2) {
-      Serial.println(F("illuminance reported by motion sensor 1"));
-      mqttClient.publish(topicPublishMotion1Illuminance, text+2); // skip first two characters (I and colon)
+    if(strncmp(text,"I",1)==0 && strlen(text)>2) {
+      Serial.println(F("illuminance reported by remote sensor 1"));
+      mqttClient.publish(topicPublishRemoteSensor1Illuminance, text+2); // skip first two characters (I and colon)
     }
   }
   
@@ -234,10 +259,18 @@ void loop() {
     mqttClient.publish(topicPublishPayloadReceived, text);
   }
 
-  mqttClient.loop();
-  delay(100);
+    // read local motion sensor level
+  int motion = digitalRead(PIN_MOTION_SENSOR);
 
-  // send keepalive message to MQTT broker and measure roughly every half hour
+  // publish motion signal status if changed
+  if (motion != oldLocalMotionSensorState) {
+    oldLocalMotionSensorState = motion;
+    sprintf(buffer,"local motion sensor signal status changed: %d",motion);
+    Serial.println(buffer);
+    motion==1 ? mqttClient.publish(topicPublishSensorMotionDetected, "on") : mqttClient.publish(topicPublishSensorMotionDetected, "off");
+  }
+
+  // send keepalive message to MQTT broker and read local sensor roughly every half hour
   if(keepAliveCounter >= 18000UL) {
     keepAliveCounter = 0;
 
@@ -245,14 +278,12 @@ void loop() {
 
     if (!envSensor.run())
     {
-        checkBsecStatus(envSensor);
+      checkBsecStatus(envSensor);
     }
   }
 
-  if (!envSensor.run())
-  {
-    checkBsecStatus(envSensor);
-  }
+  mqttClient.loop();
+  delay(100);
 }
  
 // MQTT callback function
@@ -286,83 +317,81 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
 
 void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bsec)
 {
-    if (!outputs.nOutputs)
+  if (!outputs.nOutputs)
+  {
+    return;
+  }
+
+  Serial.println("BSEC outputs:\n\tTime stamp = " + String((int) (outputs.output[0].time_stamp / INT64_C(1000000))));
+  for (uint8_t i = 0; i < outputs.nOutputs; i++)
+  {
+    const bsecData output  = outputs.output[i];
+    switch (output.sensor_id)
     {
-        return;
+      case BSEC_OUTPUT_IAQ:
+          
+          break;
+      case BSEC_OUTPUT_STABILIZATION_STATUS:
+          Serial.println("\tStabilization status = " + String(output.signal));
+          break;
+      case BSEC_OUTPUT_RUN_IN_STATUS:
+          Serial.println("\tRun in status = " + String(output.signal));
+          break;
+      case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCompensated temperature = ");Serial.println(buffer);
+          mqttClient.publish(topicPublishSensorTemperature, buffer);
+          break;
+      case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCompensated humidity = ");Serial.println(buffer);
+          mqttClient.publish(topicPublishSensorHumidity, buffer);
+          break;
+      case BSEC_OUTPUT_STATIC_IAQ:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tIAQ static = ");Serial.println(buffer);
+          mqttClient.publish(topicPublishSensorIaq, buffer);
+
+          sprintf(buffer,"%d", output.accuracy);
+          Serial.print("\tIAQ static accuracy = ");Serial.println(buffer);
+          mqttClient.publish(topicPublishSensorIaqAccuracy, buffer);
+          break;
+      case BSEC_OUTPUT_CO2_EQUIVALENT:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCO2 Equivalent = ");Serial.println(buffer);
+          mqttClient.publish(topicPublishSensorCo2, buffer);
+          break;
+      case BSEC_OUTPUT_BREATH_VOC_EQUIVALENT:
+          Serial.println("\tbVOC equivalent = " + String(output.signal));
+          break;
+      case BSEC_OUTPUT_COMPENSATED_GAS:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCompensated gas = ");Serial.println(buffer);
+          mqttClient.publish(topicPublishSensorGasResistance, buffer);
+          break;
+      default:
+          break;
     }
-
-    Serial.println("BSEC outputs:\n\tTime stamp = " + String((int) (outputs.output[0].time_stamp / INT64_C(1000000))));
-    for (uint8_t i = 0; i < outputs.nOutputs; i++)
-    {
-        const bsecData output  = outputs.output[i];
-        switch (output.sensor_id)
-        {
-            case BSEC_OUTPUT_IAQ:
-                
-                break;
-            case BSEC_OUTPUT_STABILIZATION_STATUS:
-                Serial.println("\tStabilization status = " + String(output.signal));
-                break;
-            case BSEC_OUTPUT_RUN_IN_STATUS:
-                Serial.println("\tRun in status = " + String(output.signal));
-                break;
-            case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE:
-                sprintf(buffer,"%.1f", output.signal);
-                Serial.print("\tCompensated temperature = ");Serial.println(buffer);
-                mqttClient.publish(topicPublishSensorTemperature, buffer);
-                break;
-            case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY:
-                sprintf(buffer,"%.1f", output.signal);
-                Serial.print("\tCompensated humidity = ");Serial.println(buffer);
-                mqttClient.publish(topicPublishSensorHumidity, buffer);
-                break;
-            case BSEC_OUTPUT_STATIC_IAQ:
-                sprintf(buffer,"%.1f", output.signal);
-                Serial.print("\tIAQ static = ");Serial.println(buffer);
-                mqttClient.publish(topicPublishSensorIaq, buffer);
-
-                sprintf(buffer,"%d", output.accuracy);
-                Serial.print("\tIAQ static accuracy = ");Serial.println(buffer);
-                mqttClient.publish(topicPublishSensorIaqAccuracy, buffer);
-
-                break;
-            case BSEC_OUTPUT_CO2_EQUIVALENT:
-                sprintf(buffer,"%.1f", output.signal);
-                Serial.print("\tCO2 Equivalent = ");Serial.println(buffer);
-                mqttClient.publish(topicPublishSensorCo2, buffer);
-                break;
-            case BSEC_OUTPUT_BREATH_VOC_EQUIVALENT:
-                Serial.println("\tbVOC equivalent = " + String(output.signal));
-                break;
-            case BSEC_OUTPUT_GAS_PERCENTAGE:
-                Serial.println("\tGas percentage = " + String(output.signal));
-                break;
-            case BSEC_OUTPUT_COMPENSATED_GAS:
-                Serial.println("\tCompensated gas = " + String(output.signal));
-                break;
-            default:
-                break;
-        }
-    }
+  }
 }
 
 void checkBsecStatus(Bsec2 bsec)
 {
-    if (bsec.status < BSEC_OK)
-    {
-        Serial.println("BSEC error code : " + String(bsec.status));
-    }
-    else if (bsec.status > BSEC_OK)
-    {
-        Serial.println("BSEC warning code : " + String(bsec.status));
-    }
+  if (bsec.status < BSEC_OK)
+  {
+    Serial.println("BSEC error code : " + String(bsec.status));
+  }
+  else if (bsec.status > BSEC_OK)
+  {
+    Serial.println("BSEC warning code : " + String(bsec.status));
+  }
 
-    if (bsec.sensor.status < BME68X_OK)
-    {
-        Serial.println("BME68X error code : " + String(bsec.sensor.status));
-    }
-    else if (bsec.sensor.status > BME68X_OK)
-    {
-        Serial.println("BME68X warning code : " + String(bsec.sensor.status));
-    }
+  if (bsec.sensor.status < BME68X_OK)
+  {
+    Serial.println("BME68X error code : " + String(bsec.sensor.status));
+  }
+  else if (bsec.sensor.status > BME68X_OK)
+  {
+    Serial.println("BME68X warning code : " + String(bsec.sensor.status));
+  }
 }

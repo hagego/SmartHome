@@ -21,8 +21,14 @@
 const uint8_t PIN_CE  = PIN1;      // CE  pin for nRF24L01
 const uint8_t PIN_CSN = PIN2;      // CSN pin for nRF24L01
 
-const uint8_t PIN_MOTION = PCINT8; // Motion sensor pin AM312
-const uint8_t PIN_VBAT   = PA0;    // Battery voltage pin PA0/ADC0 (pin 13)
+/**
+ * PCINT11 can only be used after disabling the external reset pin.
+ * This is done by setting the high fuse to 0x5F at last step
+ * for this, select "custom_fuses" section in platformio.ini and run Set Fuses command.
+ */
+const uint8_t PIN_MOTION1 = PCINT8; // Motion sensor 1 pin AM312
+const uint8_t PIN_MOTION2 = PCINT11;// Motion sensor 2 pin AM312
+const uint8_t PIN_VBAT    = PA0;    // Battery voltage pin PA0/ADC0 (pin 13)
 
 // global RF24 object
 RF24          radio(PIN_CE, PIN_CSN);  // create a global RF24 object, CE, CSN
@@ -90,15 +96,17 @@ double readVoltage(){
   return voltage; // return voltage
 }
 
-// measure brightness using BH1750 sensor
-double readBrightness() {
-  delay(10); // ensure enough time for Serial output in case of error
 
+/**
+ * read illuminance using BH1750 sensor
+ * @return illuminance in lux
+ */
+double readIlluminance() {
   BH1750 lightMeter(0x23); // Address 0x23 is the default address of the sensor
   delay(10); // ensure enough time for Serial output in case of error
 
   if (lightMeter.begin(BH1750::ONE_TIME_HIGH_RES_MODE)) {
-    delay(200); // ensure enough time for Serial output in case of error and measurement
+    delay(200); // ensure enough time for measurement
     return lightMeter.readLightLevel();
   }
   
@@ -110,9 +118,10 @@ double readBrightness() {
  */
 void setup() {
   // Set up pins
-  pinMode(PIN_MOTION,INPUT);  // Set motion sensor pin as input
-  pinMode(PIN_CSN, OUTPUT);   // Set SPI CSN pin as output
-  pinMode(PIN_CE,  OUTPUT);   // Set CE pin as output
+  pinMode(PIN_MOTION1,INPUT);  // Set motion sensor pin 1 as input
+  pinMode(PIN_MOTION2,INPUT);  // Set motion sensor pin 2 as input
+  pinMode(PIN_CSN, OUTPUT);    // Set SPI CSN pin as output
+  pinMode(PIN_CE,  OUTPUT);    // Set CE pin as output
 
   radio.begin();
 
@@ -130,8 +139,6 @@ void setup() {
 
   // initialize ADC
   initAdc();
-
-  readBrightness(); // read brightness once at startup
 }
 
 int counter = 0;
@@ -144,13 +151,13 @@ void loop() {
   // wake up after motion detected. Send message
   counter++;
 
+  double illuminance = readIlluminance(); // read brightness
+  strcpy(buffer,"I:");
+  dtostrf(illuminance, 3, 1, buffer+2);     // convert brightness to string
+  radio.write( buffer,sizeof(buffer) ); // Send data
+
   strcpy(buffer,"M:1");
   radio.write( buffer,sizeof(buffer) );
-
-  double brightness = readBrightness(); // read brightness
-  strcpy(buffer,"B:");
-  dtostrf(brightness, 3, 1, buffer+2);     // convert brightness to string
-  radio.write( buffer,sizeof(buffer) ); // Send data
 
   // measure battery voltage every 10th time
   if(counter==10) {
@@ -161,14 +168,27 @@ void loop() {
     dtostrf(voltage, 3, 1, buffer+2);     // convert voltage to string
     radio.write( buffer,sizeof(buffer) ); // Send data
   }
-  
+
+  radio.txStandBy();     // Wait for the transmission to complete
   radio.powerDown();     // Power down the radio immediately after sending
-  delay(3000);           // wait for 3 seconds to ensure no more motion is detected
+
+  while(digitalRead(PIN_MOTION1) == HIGH || digitalRead(PIN_MOTION2) == HIGH) { 
+    // wait for motion sensors to go LOW
+    delay(60000UL); // wait 1 minute
+  }
+
+  radio.powerUp();       // Power up the radio again
+  delay(100);
+  strcpy(buffer,"M:0");
+  radio.write( buffer,sizeof(buffer) );
+  radio.txStandBy();     // Wait for the transmission to complete
+  radio.powerDown();     // Power down the radio immediately after sending
 }
 
 void enterSleep() {
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
-  PCMSK1 |= _BV(PIN_MOTION);             // Enable pin change interrupt on PIN_MOTION
+  PCMSK1 |= _BV(PIN_MOTION1);            // Enable pin change interrupt on PIN_MOTION1
+  PCMSK1 |= _BV(PIN_MOTION2);            // Enable pin change interrupt on PIN_MOTION2
 
   
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
@@ -180,7 +200,8 @@ void enterSleep() {
   // The CPU will wake up and continue executing from here after ISR
   cli();                                 // Disable interrupts
   GIMSK  &= ~_BV(PCIE1);                 // Disable Pin Change Interrupts
-  PCMSK1 &= ~_BV(PIN_MOTION); 
+  PCMSK1 &= ~_BV(PIN_MOTION1); 
+  PCMSK1 &= ~_BV(PIN_MOTION2);           // Disable pin change interrupt on PIN_MOTION1 and PIN_MOTION2
   sleep_disable();                       // Disable sleep mode
   radio.powerUp();                       // Power up the radio
 }
@@ -188,6 +209,10 @@ void enterSleep() {
 // ISR for motion sensor (pin change)
 ISR (PCINT0_vect) {  
 }
+
+ISR (PCINT_vect) {  
+}
+
 
 // ISR for bad interrupt
 // This is a catch-all for any interrupts that don't have a specific handler

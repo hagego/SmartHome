@@ -17,9 +17,9 @@
 #define I2C_TIMEOUT 1000
 #define I2C_PULLUP 1
 #define SDA_PORT PORTA
-#define SDA_PIN 1
+#define SDA_PIN 2
 #define SCL_PORT PORTA
-#define SCL_PIN 2
+#define SCL_PIN 1
 
 #include "SoftWire.h"
 

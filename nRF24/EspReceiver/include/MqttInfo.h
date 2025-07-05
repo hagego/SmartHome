@@ -18,6 +18,7 @@ const char* topicPublishIsAlive         = MQTT_PREFIX "isAlive";         // gets
 const char* topicPublishPayloadReceived = MQTT_PREFIX "payloadReceived"; // gets published when a payload is received
 
 // MQTT remote sensor 1 publish topics
+const char* topicPublishRemoteSensor1Connected        = MQTT_PREFIX_REMOTE_SENSOR1 "connected";      // gets published when remote sensor 1 gets connected
 const char* topicPublishRemoteSensor1MotionDetected   = MQTT_PREFIX_REMOTE_SENSOR1 "motionDetected"; // gets published when motion is detected by motion sensor 1
 const char* topicPublishRemoteSensor1Voltage          = MQTT_PREFIX_REMOTE_SENSOR1 "battery";        // gets published when motion sensor 1 battery voltage is read
 const char* topicPublishRemoteSensor1Illuminance      = MQTT_PREFIX_REMOTE_SENSOR1 "illuminance";    // gets published when motion sensor 1 illuminance is read

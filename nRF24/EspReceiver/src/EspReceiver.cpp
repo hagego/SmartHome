@@ -222,6 +222,11 @@ void loop() {
     Serial.print(F("nRF24 payload received from remote sensor 1: "));
     Serial.println(text);
 
+    if(strncmp(text,"C",1)==0 ) {
+      Serial.println(F("connected reported by remote sensor 1"));
+      mqttClient.publish(topicPublishRemoteSensor1Connected, "connected");
+    }
+
     if(strncmp(text,"M",1)==0) {
       Serial.println(F("Motion change detected by remote sensor 1"));
       if(strlen(text)>2) {
@@ -270,14 +275,16 @@ void loop() {
     motion==1 ? mqttClient.publish(topicPublishSensorMotionDetected, "on") : mqttClient.publish(topicPublishSensorMotionDetected, "off");
   }
 
-  // send keepalive message to MQTT broker and read local sensor roughly every half hour
-  if(keepAliveCounter >= 18000UL) {
+  // send keepalive message to MQTT broker and read local sensor roughly every 5 minutes
+  if(keepAliveCounter >= 3000UL) {
     keepAliveCounter = 0;
 
+    Serial.println(F("Sending ping"));
     mqttClient.publish(topicPublishIsAlive, "ping");
 
     if (!envSensor.run())
     {
+      Serial.println(F("BME .run() failed - checking status"));
       checkBsecStatus(envSensor);
     }
   }

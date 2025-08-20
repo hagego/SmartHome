@@ -13,22 +13,35 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
+// using locally patched version with SW IIC
+// #define SDA_PORT PORTA
+// #define SDA_PIN 2
+// #define SCL_PORT PORTA
+// #define SCL_PIN 1
 #include "BH1750.h"
 
 
 
 // Pin definitions
-const uint8_t PIN_CE  = PIN1;      // CE  pin for nRF24L01
-const uint8_t PIN_CSN = PIN2;      // CSN pin for nRF24L01
+const uint8_t PIN_CE  = PIN1;      // PB1, CE  pin for nRF24L01
+const uint8_t PIN_CSN = PIN2;      // PB2, CSN pin for nRF24L01
 
 /**
  * PCINT11 can only be used after disabling the external reset pin.
  * This is done by setting the high fuse to 0x5F at last step
  * for this, select "custom_fuses" section in platformio.ini and run Set Fuses command.
  */
-const uint8_t PIN_MOTION1 = PCINT8; // Motion sensor 1 pin AM312
-const uint8_t PIN_MOTION2 = PCINT11;// Motion sensor 2 pin AM312
-const uint8_t PIN_VBAT    = PA0;    // Battery voltage pin PA0/ADC0 (pin 13)
+const uint8_t PIN_MOTION1 = PCINT8;  // Motion sensor 1 pin AM312
+const uint8_t PIN_MOTION2 = PCINT11; // Motion sensor 2 pin AM312
+const uint8_t PIN_MOTION3 = PCINT3;  // Motion sensor 3 pin AM312
+const uint8_t PIN_VBAT    = PA0;     // Battery voltage pin PA0/ADC0 (pin 13)
+
+/*
+ * "global" pin numbers for digitalRead() API mapped to the motion sensors
+ */
+const uint8_t PIN_MOTION1_READ_NUMBER = PIN0;
+const uint8_t PIN_MOTION2_READ_NUMBER = 11;
+const uint8_t PIN_MOTION3_READ_NUMBER = PIN7;
 
 // global RF24 object
 RF24          radio(PIN_CE, PIN_CSN);  // create a global RF24 object, CE, CSN
@@ -41,6 +54,7 @@ const double VREF  = 1.1;       // internal reference voltage
  
 // nRF24 address to use (channel) (5 bytes)
 const byte nRF24Address[6] = "1moti";
+//const byte nRF24Address[6] = "hageg";
 
 void enterSleep();
 
@@ -118,10 +132,16 @@ double readIlluminance() {
  */
 void setup() {
   // Set up pins
-  pinMode(PIN_MOTION1,INPUT);  // Set motion sensor pin 1 as input
-  pinMode(PIN_MOTION2,INPUT);  // Set motion sensor pin 2 as input
-  pinMode(PIN_CSN, OUTPUT);    // Set SPI CSN pin as output
-  pinMode(PIN_CE,  OUTPUT);    // Set CE pin as output
+  DDRB  &= ~_BV(PB0);           // Set PIN_MOTION1 as input w/o pull-up
+  PORTB &= ~_BV(PB0);           // Disable pull-up resistor on PIN_MOTION1
+  DDRB  &= ~_BV(PB3);           // Set PIN_MOTION2 as input w/o pull-up
+  PORTB &= ~_BV(PB3);           // Disable pull-up resistor on PIN_MOTION2
+
+  DDRA  &= ~_BV(PA3);           // Set PIN_MOTION3 as input with pull-up
+  PORTA |=  _BV(PA3);           // Enable pull-up resistor on PIN_MOTION3
+
+  // pinMode(PIN_CSN, OUTPUT);    // Set SPI CSN pin as output
+  // pinMode(PIN_CE,  OUTPUT);    // Set CE pin as output
 
   radio.begin();
 
@@ -141,6 +161,9 @@ void setup() {
   initAdc();
 }
 
+//
+// loop
+//
 int counter = 0;
 void loop() {
   char buffer[10];
@@ -154,10 +177,28 @@ void loop() {
   double illuminance = readIlluminance(); // read brightness
   strcpy(buffer,"I:");
   dtostrf(illuminance, 3, 1, buffer+2);     // convert brightness to string
-  radio.write( buffer,sizeof(buffer) ); // Send data
+  radio.write( buffer,sizeof(buffer) );     // Send data
 
-  strcpy(buffer,"M:1");
-  radio.write( buffer,sizeof(buffer) );
+  uint8_t pinNumber       = 255;
+  uint8_t pinTriggerState = HIGH;
+  if(digitalRead(PIN_MOTION1_READ_NUMBER) == HIGH) {
+    pinNumber = PIN_MOTION1_READ_NUMBER;
+    strcpy(buffer,"M:1");
+    radio.write( buffer,sizeof(buffer) );
+  }
+
+  if(digitalRead(PIN_MOTION2_READ_NUMBER) == HIGH) {
+    pinNumber = PIN_MOTION2_READ_NUMBER;
+    strcpy(buffer,"M:2");
+    radio.write( buffer,sizeof(buffer) );
+  }
+
+  if(digitalRead(PIN_MOTION3_READ_NUMBER) == LOW) {
+    pinNumber = PIN_MOTION3_READ_NUMBER;
+    pinTriggerState = LOW;
+    strcpy(buffer,"M:3");
+    radio.write( buffer,sizeof(buffer) );
+  }
 
   // measure battery voltage every 10th time
   if(counter==10) {
@@ -172,23 +213,30 @@ void loop() {
   radio.txStandBy();     // Wait for the transmission to complete
   radio.powerDown();     // Power down the radio immediately after sending
 
-  while(digitalRead(PIN_MOTION1) == HIGH || digitalRead(PIN_MOTION2) == HIGH) { 
-    // wait for motion sensors to go LOW
-    delay(60000UL); // wait 1 minute
+  if(pinNumber!=255) {
+    // wait for the motion sensor to go LOW
+    while(digitalRead(pinNumber) == pinTriggerState) {
+      delay(100); // wait 100ms
+    }
   }
-
+  
   radio.powerUp();       // Power up the radio again
   delay(100);
   strcpy(buffer,"M:0");
   radio.write( buffer,sizeof(buffer) );
+  delay(1000);
+
   radio.txStandBy();     // Wait for the transmission to complete
   radio.powerDown();     // Power down the radio immediately after sending
 }
 
 void enterSleep() {
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
+  GIMSK  |= _BV(PCIE0);                  // Enable Pin Change Interrupts
+
   PCMSK1 |= _BV(PIN_MOTION1);            // Enable pin change interrupt on PIN_MOTION1
   PCMSK1 |= _BV(PIN_MOTION2);            // Enable pin change interrupt on PIN_MOTION2
+  PCMSK0 |= _BV(PIN_MOTION3);            // Enable pin change interrupt on PIN_MOTION3
 
   
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
@@ -200,8 +248,12 @@ void enterSleep() {
   // The CPU will wake up and continue executing from here after ISR
   cli();                                 // Disable interrupts
   GIMSK  &= ~_BV(PCIE1);                 // Disable Pin Change Interrupts
+  GIMSK  &= ~_BV(PCIE0);                 // Disable Pin Change Interrupts
+
   PCMSK1 &= ~_BV(PIN_MOTION1); 
   PCMSK1 &= ~_BV(PIN_MOTION2);           // Disable pin change interrupt on PIN_MOTION1 and PIN_MOTION2
+  PCMSK0 &= ~_BV(PIN_MOTION3);           // Disable pin change interrupt on PIN_MOTION3
+
   sleep_disable();                       // Disable sleep mode
   radio.powerUp();                       // Power up the radio
 }
@@ -209,9 +261,9 @@ void enterSleep() {
 // ISR for motion sensor (pin change)
 ISR (PCINT0_vect) {  
 }
-
-ISR (PCINT_vect) {  
+ISR (PCINT1_vect) {  
 }
+
 
 
 // ISR for bad interrupt

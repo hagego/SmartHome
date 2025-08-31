@@ -140,6 +140,9 @@ void setup() {
   }
 
   Serial.println(F("MQTT connected"));
+  // subscribe to topics
+  mqttClient.subscribe(topicSubscribeCommand);
+
   // Once connected, publish an announcement...
   sprintf(buffer,"connected as %s",fullMqttClientName);
   mqttClient.publish(topicPublishConnected, buffer);
@@ -223,7 +226,7 @@ void loop() {
     Serial.println(F("MQTT reconnected"));
     mqttClient.publish(topicPublishIsAlive, fullMqttClientName);
 
-    // subscribe to topics
+    // re-subscribe to topics
     mqttClient.subscribe(topicSubscribeCommand);
   }
 

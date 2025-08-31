@@ -11,3 +11,8 @@ SunshineChecker/include/WifiInfo.h
 UniversalServoSensor/include/WifiInfo.h
 nRF24/EspSender/include/WifiInfo.h
 nRF24/EspReceiver/include/WifiInfo.h
+doc
+GarageDoorOpener/NfcReader/include/WifiInfo.h
+GarageDoorOpener/NfcReader/include/Apdu.h
+GarageDoorOpener/GarageDoorServer/include/WifiInfo.h
+GarageDoorOpener/GarageDoorServer/include/Apdu.h

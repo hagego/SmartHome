@@ -230,16 +230,13 @@ void loop() {
     if(strncmp(text,"M",1)==0) {
       Serial.println(F("Motion change detected by remote sensor 1"));
       if(strlen(text)>2) {
-        if(text[2]=='1') {
-          Serial.println(F("Motion detected by remote sensor 1"));
-          mqttClient.publish(topicPublishRemoteSensor1MotionDetected, "on");
-        }
-        else if(text[2]=='0') {
+        if(text[2]=='0') {
           Serial.println(F("motion off detected by remote sensor 1"));
           mqttClient.publish(topicPublishRemoteSensor1MotionDetected, "off");
         }
         else {
-          Serial.println(F("Unknown motion state received from remote sensor 1"));
+          sprintf(buffer,"on#%c",text[2]);
+          mqttClient.publish(topicPublishRemoteSensor1MotionDetected, buffer);
         }
       }
     }
@@ -253,13 +250,16 @@ void loop() {
       Serial.println(F("illuminance reported by remote sensor 1"));
       mqttClient.publish(topicPublishRemoteSensor1Illuminance, text+2); // skip first two characters (I and colon)
     }
+
+    // publish received text as debug information
+    mqttClient.publish(topicPublishRemoteSensor1Debug, text);
   }
   
   // check data on generic nRF24 address
   while(radio.available(nRF24Addresses[0])) {
     char text[16] = {0};
     radio.read(&text, sizeof(text));
-    Serial.print(F("nRF24 payload received: "));
+    Serial.print(F("nRF24 generic payload received: "));
     Serial.println(text);
     mqttClient.publish(topicPublishPayloadReceived, text);
   }
@@ -280,7 +280,8 @@ void loop() {
     keepAliveCounter = 0;
 
     Serial.println(F("Sending ping"));
-    mqttClient.publish(topicPublishIsAlive, "ping");
+    sprintf(buffer,"%s-%d:%s",MQTT_CLIENT_ID,ESP.getChipId(),WiFi.localIP().toString().c_str());
+    mqttClient.publish(topicPublishIsAlive, buffer);
 
     if (!envSensor.run())
     {

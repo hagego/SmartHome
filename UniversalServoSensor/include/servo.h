@@ -10,6 +10,9 @@
 
 #include "EepromInfo.h"
 
+extern char buffer[256];
+extern PubSubClient mqttClient;
+
 // process a servo command
 void processServoCmd(uint8_t pinServoCtrl, char* cmd) {
   Servo servo;
@@ -35,20 +38,27 @@ void processServoCmd(uint8_t pinServoCtrl, char* cmd) {
   servo.write(oldAngle);
   delay(200); // wait for servo to reach old position
 
+  sprintf(buffer,"servo command is %s, moving from %d to %d",cmd,oldAngle,newAngle);
+  mqttClient.publish(topicPublishDebug, buffer);
+
   if(oldAngle != newAngle) {
     if(oldAngle>newAngle) {
       for(int angle=oldAngle ; angle>newAngle ; angle-=10) {
         servo.write(angle);
+        mqttClient.publish(topicPublishDebug, itoa(angle, buffer, 10));
         delay(200);
       }
     } else {
       for(int angle=oldAngle ; angle<newAngle ; angle+=10) {
         servo.write(angle);
+        mqttClient.publish(topicPublishDebug, itoa(angle, buffer, 10));
         delay(200);
       }
     }
     servo.write(newAngle);
     delay(200);
+
+    mqttClient.publish(topicPublishDebug, "servo done");
   }
 }
 

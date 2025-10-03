@@ -215,53 +215,51 @@ void loop() {
     ESP.restart();
   }
 
-  // check for data from motion sensor 1
-  while(radio.available(nRF24Addresses[1])) {
+  // check if there is data on the nRF24
+  uint8_t pipeNum;
+  while(radio.available(&pipeNum)) {
     char text[nRF24PayloadSize] = {0};
     radio.read(&text, sizeof(text));
-    Serial.print(F("nRF24 payload received from remote sensor 1: "));
-    Serial.println(text);
+    sprintf(buffer,"nRF24 data received on pipe %d: %s",pipeNum,text);
+    Serial.println(buffer);
 
-    if(strncmp(text,"C",1)==0 ) {
-      Serial.println(F("connected reported by remote sensor 1"));
-      mqttClient.publish(topicPublishRemoteSensor1Connected, "connected");
-    }
+    if(pipeNum==1) {
+      // data from remote sensor 1
+      if(strncmp(text,"C",1)==0 ) {
+        Serial.println(F("connected reported by remote sensor 1"));
+        mqttClient.publish(topicPublishRemoteSensor1Connected, "connected");
+      }
 
-    if(strncmp(text,"M",1)==0) {
-      Serial.println(F("Motion change detected by remote sensor 1"));
-      if(strlen(text)>2) {
-        if(text[2]=='0') {
-          Serial.println(F("motion off detected by remote sensor 1"));
-          mqttClient.publish(topicPublishRemoteSensor1MotionDetected, "off");
-        }
-        else {
-          sprintf(buffer,"on#%c",text[2]);
-          mqttClient.publish(topicPublishRemoteSensor1MotionDetected, buffer);
+      if(strncmp(text,"M",1)==0) {
+        Serial.println(F("Motion change detected by remote sensor 1"));
+        if(strlen(text)>2) {
+          if(text[2]=='0') {
+            Serial.println(F("motion off detected by remote sensor 1"));
+            mqttClient.publish(topicPublishRemoteSensor1MotionDetected, "off");
+          }
+          else {
+            sprintf(buffer,"on#%c",text[2]);
+            mqttClient.publish(topicPublishRemoteSensor1MotionDetected, buffer);
+          }
         }
       }
-    }
 
-    if(strncmp(text,"V",1)==0 && strlen(text)>2) {
-      Serial.println(F("Battery voltage reported by remote sensor 1"));
-      mqttClient.publish(topicPublishRemoteSensor1Voltage, text+2); // skip first two characters (V and colon)
-    }
-    
-    if(strncmp(text,"I",1)==0 && strlen(text)>2) {
-      Serial.println(F("illuminance reported by remote sensor 1"));
-      mqttClient.publish(topicPublishRemoteSensor1Illuminance, text+2); // skip first two characters (I and colon)
-    }
+      if(strncmp(text,"V",1)==0 && strlen(text)>2) {
+        Serial.println(F("Battery voltage reported by remote sensor 1"));
+        mqttClient.publish(topicPublishRemoteSensor1Voltage, text+2); // skip first two characters (V and colon)
+      }
+      
+      if(strncmp(text,"I",1)==0 && strlen(text)>2) {
+        Serial.println(F("illuminance reported by remote sensor 1"));
+        mqttClient.publish(topicPublishRemoteSensor1Illuminance, text+2); // skip first two characters (I and colon)
+      }
 
-    // publish received text as debug information
-    mqttClient.publish(topicPublishRemoteSensor1Debug, text);
-  }
-  
-  // check data on generic nRF24 address
-  while(radio.available(nRF24Addresses[0])) {
-    char text[16] = {0};
-    radio.read(&text, sizeof(text));
-    Serial.print(F("nRF24 generic payload received: "));
-    Serial.println(text);
-    mqttClient.publish(topicPublishPayloadReceived, text);
+      // publish received text as debug information
+      mqttClient.publish(topicPublishRemoteSensor1Debug, text);
+    }
+    else {
+      mqttClient.publish(topicPublishPayloadReceived, text);  
+    }
   }
 
     // read local motion sensor level

@@ -28,8 +28,7 @@ const uint8_t PIN_MOTION_SENSOR = 16; // D0 on D1 mini (GPIO16)
 // nRF24 addresses to listen to
 // 0:   debug:   generic
 // 1-5: <i>clnt: clients 1-5
-//uint8_t nRF24Addresses[][6] = {"debug", "1clnt", "2clnt", "3clnt", "4clnt", "5clnt"}; // max. 6 addresses possible
-uint8_t nRF24Addresses[][6] = {"1clnt"};
+uint8_t nRF24Addresses[][6] = {"debug", "1clnt", "2clnt", "3clnt", "4clnt", "5clnt"}; // max. 6 addresses possible
 
 // nRF24 paload size
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
@@ -172,7 +171,58 @@ void loop() {
       radio.read(&text, sizeof(text));
       sprintf(buffer,"payload received on address %d: %s",pipe,text);
       Serial.println(buffer);
+
       mqttClient.publish(topicPublishPayloadReceived, buffer);
+       
+      if(text[0] == 'L') {
+        
+
+
+         radio.stopListening();          // set module as transmitter
+
+        delay(1000);
+
+  radio.setAutoAck(1);            // Ensure autoACK is enabled
+  radio.setRetries(5,15);         // Max delay between retries & number of retries
+  radio.setPALevel(RF24_PA_HIGH); // Set power level to high
+  radio.setPayloadSize(nRF24PayloadSize);
+  radio.openWritingPipe(nRF24Addresses[pipe]); // Write to device address
+
+  char buffer[10] = "10";
+  radio.write( buffer,sizeof(buffer) );
+  radio.txStandBy();              // Wait for the transmission to complete
+  delay(1000);
+
+  strcpy(buffer,"100");
+  radio.write( buffer,sizeof(buffer) );
+  radio.txStandBy();              // Wait for the transmission to complete
+  delay(1000);
+
+  strcpy(buffer,"10");
+  radio.write( buffer,sizeof(buffer) );
+  radio.txStandBy();              // Wait for the transmission to complete
+  delay(1000);
+
+  strcpy(buffer,"100");
+  radio.write( buffer,sizeof(buffer) );
+  radio.txStandBy();              // Wait for the transmission to complete
+  delay(1000);
+
+  strcpy(buffer,"0");
+  radio.write( buffer,sizeof(buffer) );
+  radio.txStandBy();              // Wait for the transmission to complete
+
+    // listen to all addresses in nRF24Addresses
+  for(uint8 i=0; i<sizeof(nRF24Addresses)/sizeof(nRF24Addresses[0]); i++) {
+    Serial.printf("Listening to nRF24 address %d: %s\n",i,nRF24Addresses[i]);
+    radio.openReadingPipe(i, nRF24Addresses[i]);
+  }
+
+  radio.setPayloadSize(nRF24PayloadSize);
+  radio.startListening();                   // set module as receiver
+
+      }
+      
   }
 
 

@@ -5,7 +5,7 @@
  * ATtiny84 pinout:
  * - pin  2: PB0,PCINT8  - Motion sensor 1 input
  * - pin  3: PB1         - CE for nRF24L01
- * - pin  4: PB3,PCINT11 - Motion sensor 2 input (with pull-up resistor) - requires fusing PB3 as GPIO
+ * - pin  4: PB3,PCINT11 - Motion sensor 2 input - requires fusing PB3 as GPIO
  * - pin  5: PB2         - CS for nRF24L01
  * - pin  6: PA7,OC0B    - PWM output to LED driver
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
@@ -27,7 +27,7 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-const uint32_t LIGHT_ON_MS = 30000;
+const uint32_t LIGHT_ON_MS = 300000;
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
@@ -39,17 +39,16 @@ const byte nRF24Address[6] = "1clnt";
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
-// global RF24 object
-RF24          radio(PB1, PB2);  // create a global RF24 object, CE, CSN
+// global RF24 object and payload buffer
+RF24          radio(PB1, PB2);           // create a global RF24 object, CE, CSN
+char          payload[nRF24PayloadSize]; // create a payload buffer
 
 // Function prototypes
-void initAdc();
-double readVoltage();
-void initPWM();
-void setPWMDutyCycle(uint8_t dutyCycle);
-void enterSleep();
-
-
+void   initAdc();                          // initialize ADC for battery voltage measurement
+double readBatteryVoltage();               // read battery voltage
+void   initPWM();                          // initialize PWM on PA7
+void   setPWMDutyCycle(uint8_t dutyCycle); // set PWM duty cycle on PA7 (0-100)
+void   enterSleep();                       // enter sleep mode
 
 
 void setup() {
@@ -58,7 +57,7 @@ void setup() {
  * pinout:
  * - pin  2: PB0,PCINT8  - Motion sensor 1 input
  * - pin  3: PB1         - CE for nRF24L01
- * - pin  4: PB3,PCINT11 - Motion sensor 2 input (with pull-up resistor) - requires fusing PB3 as GPIO
+ * - pin  4: PB3,PCINT11 - Motion sensor 2 input - requires fusing PB3 as GPIO
  * - pin  5: PB2         - CS for nRF24L01
  * - pin  6: PA7,OC0B    - PWM output to LED driver
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
@@ -70,69 +69,73 @@ void setup() {
  * - pin 13: PA0,ADC0    - Battery voltage measurement
  */
 
-  DDRB  &= ~_BV(PB0);            // Set PB0 as input: motion sensor 1
-  //PORTB |=  _BV(PB0);            // Enable pull-up resistor on PB0
-  //DDRB  |=  _BV(PB1);            // Set PB1 as output: CE for nRF24L01
-  DDRB  &= ~_BV(PB3);            // Set PB3 as input: motion sensor 2
-  PORTB |=  _BV(PB3);            // Enable pull-up resistor on PB3
-  //DDRB  |=  _BV(PB2);            // Set PB2 as output: CS for nRF24L01
-  DDRA  |=  _BV(PA7);            // Set PA7 as output: LED driver PWM control
+  // set pin modes
+  DDRB  &= ~_BV(PB0);            // pin  2: Set PB0 as input: motion sensor 1
+  DDRB  |=  _BV(PB1);            // pin  3: Set PB1 as output: CE for nRF24L01
+  DDRB  &= ~_BV(PB3);            // pin  4: Set PB3 as input: motion sensor 2
+  DDRB  |=  _BV(PB2);            // pin  5: Set PB2 as output: CS for nRF24L01
+  DDRA  |=  _BV(PA7);            // pin  6: Set PA7 as output for PWM to LED driver
+  DDRA  |=  _BV(PA6);            // pin  7: Set PA6 as output: SPI MOSI for nRF24LO1
+  DDRA  &= ~_BV(PA5);            // pin  8: Set PA5 as input: SPI MISO for nRF24LO1
+  DDRA  |=  _BV(PA4);            // pin  9: Set PA4 as output: SPI SCK for nRF24LO1
+  DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
+  DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
+  DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
 
-  DDRA  |=  _BV(PA3);            // Set PA3 as output: enables DCDC for LED driver
-
+  // initialize nRF24L01
   radio.begin();
 
-  radio.stopListening();          // set module as transmitter
-  radio.setAutoAck(1);            // Ensure autoACK is enabled
-  radio.setRetries(5,15);         // Max delay between retries & number of retries
-  radio.setPayloadSize(nRF24PayloadSize);       // Set payload size to 16 bytes
-  radio.setPALevel(RF24_PA_HIGH); // Set power level to high
-  radio.openWritingPipe(nRF24Address); // Write to device address 
+  radio.stopListening();                     // set module as transmitter
+  radio.setAutoAck(1);                       // Ensure autoACK is enabled
+  radio.setRetries(5,15);                    // Max delay between retries & number of retries
+  radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
+  radio.setPALevel(RF24_PA_HIGH);            // Set power level to high
+  radio.openWritingPipe(nRF24Address);       // Write to device address 
 
   // send connect message
-  char buffer[10] = "C:1";
-  radio.write( buffer,sizeof(buffer) );
+  strcpy(payload,"C:1");
+  radio.write( payload,sizeof(payload) );
   radio.txStandBy();              // Wait for the transmission to complete
 
-  PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver
+  PORTA &= ~_BV(PA3);             // Set PA3 low: disables DCDC for LED driver => LED off
 
-    // initialize ADC
+  // initialize ADC for battery voltage measurement
   initAdc();
-
 }
+
 
 void loop() {
 
+  // go to sleep until motion is detected
   enterSleep();
 
-  radio.powerUp();                       // Power up the radio
-
-
-    // enable DCDC and initialize PWM
+  // enable DCDC and initialize PWM to 100% brightness
   PORTA |= _BV(PA3);            // Set PA3 high: enables DCDC for LED driver
-  initPWM();
-  setPWMDutyCycle(100);
+  initPWM();                    // initialize PWM on PA7
+  setPWMDutyCycle(100);         // set PWM to 100% brightness
 
-        double voltage = readVoltage(); // read voltage
+  delay(100);                   // let voltage stabilize
+  radio.powerUp();              // Power up the radio
+  delay(10);
 
-            // send motion detected message
-  char buffer[10] = "M:1";
-  radio.write( buffer,strlen(buffer) );
+  // send motion detected message
+  strcpy(payload,"M:1");
+  radio.write( payload,sizeof(payload) );
 
+  // measure battery voltage and send
+  double voltage = readBatteryVoltage();   // read voltage
+  strcpy(payload,"V:");
+  dtostrf(voltage, 3, 1, payload+2);       // convert voltage to string
+  radio.write( payload,sizeof(payload) );  // Send data
 
-      strcpy(buffer,"V:");
-      dtostrf(voltage, 3, 1, buffer+2);     // convert voltage to string
-      radio.write( buffer,sizeof(buffer) ); // Send data
+  // send ready to listen message
+  strcpy(payload,"L:1");
+  radio.write( payload,sizeof(payload) );
 
-      // send ready to listen message
-  strcpy(buffer,"L:1");
-  radio.write( buffer,strlen(buffer) );
+  radio.txStandBy();              // Wait for the transmission to complete
 
-      radio.txStandBy();              // Wait for the transmission to complete
-
-
-    radio.openReadingPipe(0, nRF24Address);
-
+  // Now set the module as receiver and wait for commands
+  radio.openReadingPipe(0, nRF24Address);
   radio.setPayloadSize(nRF24PayloadSize);
   radio.startListening();       
 
@@ -153,14 +156,12 @@ void loop() {
     delay(100);
   }
   radio.stopListening();          // set module as transmitter
-  radio.setAutoAck(1);            // Ensure autoACK is enabled
   radio.setRetries(5,15);         // Max delay between retries & number of retries
-  radio.setPayloadSize(nRF24PayloadSize);       // Set payload size to 16 bytes
   radio.setPALevel(RF24_PA_HIGH); // Set power level to high
   radio.openWritingPipe(nRF24Address); // Write to device address 
 
-  strcpy(buffer,"L:0");
-  radio.write( buffer,strlen(buffer) );
+  strcpy(payload,"L:0");
+  radio.write( payload,sizeof(payload) );
 
   radio.txStandBy();              // Wait for the transmission to complete
   radio.powerDown();     // Power down the radio immediately after sending
@@ -246,7 +247,7 @@ void initAdc() {
  * measure battery voltage
  * @return voltage in V
  */
-double readVoltage(){
+double readBatteryVoltage(){
   ADCSRA |= _BV(ADEN);									  // enable ADC
 	delay(100);									            // settle
   ADCSRA |= _BV(ADSC);                    // start a conversion

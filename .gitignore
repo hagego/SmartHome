@@ -16,3 +16,4 @@ GarageDoorOpener/NfcReader/include/WifiInfo.h
 GarageDoorOpener/NfcReader/include/Apdu.h
 GarageDoorOpener/GarageDoorServer/include/WifiInfo.h
 GarageDoorOpener/GarageDoorServer/include/Apdu.h
+nRF24/EspRemoteControl/include/WifiInfo.h

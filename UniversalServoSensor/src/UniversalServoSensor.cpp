@@ -37,7 +37,7 @@ const uint8_t pinManualClose = 12; // GPIO12 connects key to manually close, D6 
 WiFiClient   wifiClient;
 PubSubClient mqttClient(wifiClient);
 
-// use a global bugger for sprintfs
+// use a global buffer for sprintfs
 char buffer[256];
 
 // exit routine. Disconnects, disbales power and goes to sleep
@@ -139,7 +139,7 @@ void setup() {
   mqttClient.subscribe(topicSubscribeAngleClose);
   mqttClient.subscribe(topicSubscribeServoCommand);
 
-  mqttClient.publish(topicPublishDebug, "start loop");
+  //mqttClient.publish(topicPublishDebug, "start loop");
   mqttClient.loop();
 
   // process local servo command if needed
@@ -149,11 +149,11 @@ void setup() {
     mqttClient.publish(topicPublishDoorControl,"local",true);
   }
 
-  mqttClient.publish(topicPublishDebug, "start temp measurement");
+  //mqttClient.publish(topicPublishDebug, "start temp measurement");
   measureTemperature(pinDHT22,mqttClient);
-  mqttClient.publish(topicPublishDebug, "start battery measurement");
+  //mqttClient.publish(topicPublishDebug, "start battery measurement");
   measureBatteryVoltage(mqttClient);
-  mqttClient.publish(topicPublishDebug, "battery measurement done");
+  //mqttClient.publish(topicPublishDebug, "battery measurement done");
 
   // give enough time to receive MQTT publications
   Serial.println(F("MQTT subsription loop started"));

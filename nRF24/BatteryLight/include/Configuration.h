@@ -1,0 +1,56 @@
+#include <Arduino.h>
+
+#ifndef CONFIGURATION_H
+#define CONFIGURATION_H
+
+/**
+ * A simple class managing configuration data stored in the ATTiny EEPROM
+ */
+class Configuration {
+  public:
+
+    // default constructor
+    Configuration();
+
+    // gets/sets client ID
+    uint8_t getClientId();
+    void setClientId(uint8_t clientId);
+
+    // gets/sets light timeout in seconds
+    uint16_t getTimeout();
+    void setTimeout(uint16_t timeout);
+
+    // gets/sets PWM value in percent
+    uint8_t getPwmValue();
+    void setPwmValue(uint8_t pwmValue);
+
+    // gets/sets illuminance threeshold in lux
+    uint8_t getIlluminanceThreshold();
+    void setIlluminanceThreshold(uint8_t threshold);
+
+  private:
+  
+    // data members
+    uint8_t  clientId;
+    uint16_t timeout;
+    uint8_t  pwmValue;
+    uint8_t  illuminanceThreshold;
+
+    // addresses
+    static const uint8_t ADDRESS_IS_INITIALIZED = 0;  // stores a magic number if initialized
+    static const uint8_t ADDRESS_CLIENT_ID      = 1;  // client ID (1 byte)
+    static const uint8_t ADDRESS_TIMEOUT        = 2;  // timeout in seconds, 2 byte
+    static const uint8_t ADDRESS_PWM_VALUE      = 4;  // PWM value in percent (1 byte)
+    static const uint8_t ADDRESS_ILLUMINANCE    = 5;  // illuminance threshold in lux (1 byte)
+
+    // magic number to check if EEPROM has been initialized with default data
+    static const uint8_t MAGIC_NUMBER           = 42;
+
+    // helper methods to read/write from/to EEPROM
+    uint8_t  readByteFromEEPROM(uint8_t address);
+    void     writeByteToEEPROM(uint8_t address, uint8_t value);
+    uint16_t readWordFromEEPROM(uint8_t address);
+    void     writeWordToEEPROM(uint8_t address, uint16_t value);
+};
+
+#endif // CONFIGURATION_H

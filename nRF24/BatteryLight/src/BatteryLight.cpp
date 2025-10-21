@@ -27,21 +27,26 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-const uint32_t LIGHT_ON_MS = 300000;
+#include "Configuration.h"
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
 const double R_GND = 100000.0;  // sense point to GND 100k
 const double VREF  = 1.1;       // internal reference voltage
 
-// nRF24 address to use (channel) (5 bytes)
-const byte nRF24Address[6] = "1clnt";
+// nRF24 addresses to use (channel) (5 bytes)
+// address 0 is used for writing, address 1 for reading
+const byte nRF24Addresses[][6] = {"1clnt","remot"};
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
 // global RF24 object and payload buffer
 RF24          radio(PB1, PB2);           // create a global RF24 object, CE, CSN
 char          payload[nRF24PayloadSize]; // create a payload buffer
+char*         payloadText = payload+1;   // pointer to text in payload, skipping first byte (client ID)
+
+// global configuration object
+Configuration config;
 
 // Function prototypes
 void   initAdc();                          // initialize ADC for battery voltage measurement
@@ -82,6 +87,9 @@ void setup() {
   DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
   DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
 
+  // sore client ID in 1st byte of payload
+  payload[0] = config.getClientId();
+
   // initialize nRF24L01
   radio.begin();
 
@@ -90,14 +98,15 @@ void setup() {
   radio.setRetries(5,15);                    // Max delay between retries & number of retries
   radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
   radio.setPALevel(RF24_PA_HIGH);            // Set power level to high
-  radio.openWritingPipe(nRF24Address);       // Write to device address 
+  radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
 
   // send connect message
-  strcpy(payload,"C:1");
+  strcpy(payloadText,"C:1");
   radio.write( payload,sizeof(payload) );
-  radio.txStandBy();              // Wait for the transmission to complete
+  radio.txStandBy();                         // Wait for the transmission to complete
+  radio.powerDown();                         // Power down the radio immediately after sending
 
-  PORTA &= ~_BV(PA3);             // Set PA3 low: disables DCDC for LED driver => LED off
+  PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
 
   // initialize ADC for battery voltage measurement
   initAdc();
@@ -112,81 +121,129 @@ void loop() {
   // enable DCDC and initialize PWM to 100% brightness
   PORTA |= _BV(PA3);            // Set PA3 high: enables DCDC for LED driver
   initPWM();                    // initialize PWM on PA7
-  setPWMDutyCycle(100);         // set PWM to 100% brightness
+  setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
 
   delay(100);                   // let voltage stabilize
   radio.powerUp();              // Power up the radio
   delay(10);
 
   // send motion detected message
-  strcpy(payload,"M:1");
+  radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
+  strcpy(payloadText,"M:1");
   radio.write( payload,sizeof(payload) );
 
   // measure battery voltage and send
   double voltage = readBatteryVoltage();   // read voltage
-  strcpy(payload,"V:");
-  dtostrf(voltage, 3, 1, payload+2);       // convert voltage to string
+  strcpy(payloadText,"V:");
+  dtostrf(voltage, 3, 1, payloadText+2);       // convert voltage to string
   radio.write( payload,sizeof(payload) );  // Send data
 
   // send ready to listen message
-  strcpy(payload,"L:1");
+  strcpy(payloadText,"L:1");
   radio.write( payload,sizeof(payload) );
 
   radio.txStandBy();              // Wait for the transmission to complete
 
   // Now set the module as receiver and wait for commands
-  radio.openReadingPipe(0, nRF24Address);
-  radio.setPayloadSize(nRF24PayloadSize);
+  radio.openReadingPipe(1, nRF24Addresses[1]);
   radio.startListening();       
 
   uint32_t startTime = millis();
-  while ( (millis() - startTime) < LIGHT_ON_MS ) {
-      uint8_t pipe;
-      if(radio.available(&pipe)) {
-
+  while ( (millis() - startTime) < config.getTimeout() * 1000 ) {
+    uint8_t pipe;
+    if(radio.available(&pipe)) {
       char text[nRF24PayloadSize] = {0};
       radio.read(&text, sizeof(text));
 
-      int pwmValue = atoi(text);
-      if(pwmValue >= 0 && pwmValue <= 100) {
-        setPWMDutyCycle((uint8_t)pwmValue); 
-      }
-    }
+      // get target client ID from message
+      uint8_t targetClientId = text[0];
 
-    delay(100);
+      if(targetClientId != config.getClientId() && targetClientId != 0) {
+        // not for me
+        continue;
+      }
+
+      // process commands
+
+      // command to set new client ID: "X:<value>" where <value> is 0-255
+      if(text[1]=='X' && strlen(text+1)>2) {
+        int clientId = atoi(text + 3);
+        if(clientId > 0 && clientId <= 255) {
+          // set new client ID and update payload
+          config.setClientId((uint8_t)clientId);
+          payload[0] = config.getClientId();
+        }
+      }
+      
+      // command to set PWM value: "P:<value>" where <value> is 0-100
+      if(text[1]=='P' && strlen(text+1)>2) {
+        int pwmValue = atoi(text + 3);
+        if(pwmValue >= 0 && pwmValue <= 100) {
+          config.setPwmValue((uint8_t)pwmValue);
+          setPWMDutyCycle((uint8_t)pwmValue);
+        }
+      }
+
+      // command to set timeout value: "T:<value>" where <value> is in seconds
+      if(text[1]=='T' && strlen(text+1)>2) {
+        int timeout = atoi(text + 3);
+        if(timeout > 0 && timeout <= 3600) { // max 1 hour
+          config.setTimeout((uint16_t)timeout);
+        }
+      }
+
+      // command to set illuminance threshold: "I:<value>" where <value> is in lux
+      if(text[1]=='I' && strlen(text+1)>2) {
+        int threshold = atoi(text + 3);
+        if(threshold >= 0 && threshold <= 255) {
+          config.setIlluminanceThreshold((uint8_t)threshold);
+        }
+      }
+
+      // ready to receive the next command
+      radio.stopListening();          // set module as transmitter
+
+      strcpy(payloadText,"L:1");
+      radio.write( payload,sizeof(payload) );
+      radio.txStandBy();              // Wait for the transmission to complete
+
+      // Now set the module as receiver and wait for commands
+      radio.openReadingPipe(1, nRF24Addresses[1]);
+      radio.startListening();   
+    }
+    else {
+      delay(10); // small delay to avoid busy loop
+    }
   }
   radio.stopListening();          // set module as transmitter
-  radio.setRetries(5,15);         // Max delay between retries & number of retries
-  radio.setPALevel(RF24_PA_HIGH); // Set power level to high
-  radio.openWritingPipe(nRF24Address); // Write to device address 
 
-  strcpy(payload,"L:0");
+  strcpy(payloadText,"L:0");
   radio.write( payload,sizeof(payload) );
 
   radio.txStandBy();              // Wait for the transmission to complete
-  radio.powerDown();     // Power down the radio immediately after sending
-
+  radio.powerDown();              // Power down the radio immediately after sending
 
   PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver
 }
 
 
-
+/**
+ * enter MCU sleep mode. nRF24 module is *not* handled in this function
+ */
 void enterSleep() {
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
   GIMSK  |= _BV(PCIE0);                  // Enable Pin Change Interrupts
  
   PCMSK1 |= _BV(PCINT8);            // Enable pin change interrupt on PIN_MOTION1
 
-  
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
   sleep_enable();                        // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
-  sei();                    // nRF24 address to use (channel) (5 bytes)
+  sei();                                 // enable interrupts
   sleep_cpu();                           // sleep
   // The CPU is now sleeping, and will wake up on interrupt
   // The ISR will be called when the interrupt occurs
   // The CPU will wake up and continue executing from here after ISR
-  //cli();                                 // Disable interrupts
+  //cli();                               // Disable interrupts
   GIMSK  &= ~_BV(PCIE1);                 // Disable Pin Change Interrupts
   GIMSK  &= ~_BV(PCIE0);                 // Disable Pin Change Interrupts
 
@@ -244,7 +301,7 @@ void initAdc() {
 
 
 /**
- * measure battery voltage
+ * measure battery voltage on ADC
  * @return voltage in V
  */
 double readBatteryVoltage(){

@@ -17,6 +17,10 @@
  * - pin 13: PA0,ADC0    - Battery voltage measurement
  */
 
+// enable one of these defines to compile for specific boards
+#define MOTION_TRIGGERED_LIGHT      // for motion triggered, battery powered light
+// #define LED_STRIP_CONTROLLER     // for LED strip controller
+
 
 #include <Arduino.h>
 
@@ -100,43 +104,52 @@ void setup() {
   radio.setPALevel(RF24_PA_HIGH);            // Set power level to high
   radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
 
-  // send connect message
-  strcpy(payloadText,"C:1");
-  radio.write( payload,sizeof(payload) );
-  radio.txStandBy();                         // Wait for the transmission to complete
-  radio.powerDown();                         // Power down the radio immediately after sending
-
-  PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
-
   // initialize ADC for battery voltage measurement
   initAdc();
-}
 
-
-void loop() {
-
-  // go to sleep until motion is detected
-  enterSleep();
-
-  // enable DCDC and initialize PWM to 100% brightness
-  PORTA |= _BV(PA3);            // Set PA3 high: enables DCDC for LED driver
-  initPWM();                    // initialize PWM on PA7
-  setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
-
-  delay(100);                   // let voltage stabilize
-  radio.powerUp();              // Power up the radio
-  delay(10);
-
-  // send motion detected message
-  radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
-  strcpy(payloadText,"M:1");
+  // send connect message
+  strcpy(payloadText,"C:1");
   radio.write( payload,sizeof(payload) );
 
   // measure battery voltage and send
   double voltage = readBatteryVoltage();   // read voltage
   strcpy(payloadText,"V:");
-  dtostrf(voltage, 3, 1, payloadText+2);       // convert voltage to string
+  dtostrf(voltage, 3, 1, payloadText+2);   // convert voltage to string
   radio.write( payload,sizeof(payload) );  // Send data
+
+  radio.txStandBy();                         // Wait for the transmission to complete
+}
+
+
+void loop() {
+  #ifdef MOTION_TRIGGERED_LIGHT
+    radio.powerDown();                         // Power down the radio immediately after sending
+    PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
+
+    // go to sleep until motion is detected
+    enterSleep();
+
+    // enable DCDC and initialize PWM to 100% brightness
+    PORTA |= _BV(PA3);            // Set PA3 high: enables DCDC for LED driver
+    initPWM();                    // initialize PWM on PA7
+    setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
+
+    delay(100);                   // let voltage stabilize
+    radio.powerUp();              // Power up the radio
+    delay(10);
+
+    
+    // send motion detected message
+    radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
+    strcpy(payloadText,"M:1");
+    radio.write( payload,sizeof(payload) );
+
+    // measure battery voltage and send
+    double voltage = readBatteryVoltage();   // read voltage
+    strcpy(payloadText,"V:");
+    dtostrf(voltage, 3, 1, payloadText+2);   // convert voltage to string
+    radio.write( payload,sizeof(payload) );  // Send data
+  #endif
 
   // send ready to listen message
   strcpy(payloadText,"L:1");
@@ -146,10 +159,14 @@ void loop() {
 
   // Now set the module as receiver and wait for commands
   radio.openReadingPipe(1, nRF24Addresses[1]);
-  radio.startListening();       
+  radio.startListening();
+
+  boolean exitCondition = false;
 
   uint32_t startTime = millis();
-  while ( (millis() - startTime) < config.getTimeout() * 1000 ) {
+  while (    !exitCondition
+          && (   (config.getTimeout() == 0)
+              || ((millis() - startTime) < config.getTimeout() * 1000))) {
     uint8_t pipe;
     if(radio.available(&pipe)) {
       char text[nRF24PayloadSize] = {0};
@@ -164,6 +181,11 @@ void loop() {
       }
 
       // process commands
+
+      // command to switch off: "O"
+      if(text[1]=='O') {
+        exitCondition = true;
+      }
 
       // command to set new client ID: "X:<value>" where <value> is 0-255
       if(text[1]=='X' && strlen(text+1)>2) {
@@ -221,9 +243,6 @@ void loop() {
   radio.write( payload,sizeof(payload) );
 
   radio.txStandBy();              // Wait for the transmission to complete
-  radio.powerDown();              // Power down the radio immediately after sending
-
-  PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver
 }
 
 

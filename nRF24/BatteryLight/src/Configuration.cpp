@@ -7,7 +7,7 @@ Configuration::Configuration()
     uint8_t isInitialized = readByteFromEEPROM(ADDRESS_IS_INITIALIZED);
     if (isInitialized != MAGIC_NUMBER) {
         // not initialized, set default values
-        clientId = 0; // default client ID 0
+        clientId = 255; // default client ID 255
         timeout  = 300; // default timeout 300 seconds
         pwmValue = 100; // default PWM value 100%
         illuminanceThreshold = 50; // default illuminance threshold 50 lux

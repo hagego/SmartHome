@@ -7,20 +7,15 @@
  * - pin  3: PB1         - CE for nRF24L01
  * - pin  4: PB3,PCINT11 - Motion sensor 2 input - requires fusing PB3 as GPIO
  * - pin  5: PB2         - CS for nRF24L01
- * - pin  6: PA7,OC0B    - PWM output to LED driver
+ * - pin  6: PA7,OC0B    - PWM output to LED driver or data pin for WS2812 strip 1
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver
+ * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 1
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
  */
-
-// enable one of these defines to compile for specific boards
-#define MOTION_TRIGGERED_LIGHT      // for motion triggered, battery powered light
-// #define LED_STRIP_CONTROLLER     // for LED strip controller
-
 
 #include <Arduino.h>
 
@@ -68,11 +63,11 @@ void setup() {
  * - pin  3: PB1         - CE for nRF24L01
  * - pin  4: PB3,PCINT11 - Motion sensor 2 input - requires fusing PB3 as GPIO
  * - pin  5: PB2         - CS for nRF24L01
- * - pin  6: PA7,OC0B    - PWM output to LED driver
+ * - pin  6: PA7,OC0B    - PWM output to LED driver or data pin for WS2812 strip 1
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver
+ * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
@@ -90,6 +85,8 @@ void setup() {
   DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
   DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
   DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
+
+  initPWM();                    // initialize PWM on PA7
 
   // sore client ID in 1st byte of payload
   payload[0] = config.getClientId();
@@ -122,7 +119,7 @@ void setup() {
 
 
 void loop() {
-  #ifdef MOTION_TRIGGERED_LIGHT
+  #ifdef LED_TYPE_PWM
     radio.powerDown();                         // Power down the radio immediately after sending
     PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
 
@@ -131,12 +128,12 @@ void loop() {
 
     // enable DCDC and initialize PWM to 100% brightness
     PORTA |= _BV(PA3);            // Set PA3 high: enables DCDC for LED driver
-    initPWM();                    // initialize PWM on PA7
+    
     setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
 
-    delay(100);                   // let voltage stabilize
+    delayMicroseconds(100000UL);    // let voltage stabilize
     radio.powerUp();              // Power up the radio
-    delay(10);
+    delayMicroseconds(10000);
 
     
     // send motion detected message
@@ -156,6 +153,7 @@ void loop() {
   radio.write( payload,sizeof(payload) );
 
   radio.txStandBy();              // Wait for the transmission to complete
+  delayMicroseconds(10000);
 
   // Now set the module as receiver and wait for commands
   radio.openReadingPipe(1, nRF24Addresses[1]);
@@ -163,10 +161,10 @@ void loop() {
 
   boolean exitCondition = false;
 
-  uint32_t startTime = millis();
+  uint64_t startTime = millis();
   while (    !exitCondition
           && (   (config.getTimeout() == 0)
-              || ((millis() - startTime) < config.getTimeout() * 1000))) {
+              || ((millis() - startTime) < (uint64_t)config.getTimeout() * 1000UL))) {
     uint8_t pipe;
     if(radio.available(&pipe)) {
       char text[nRF24PayloadSize] = {0};
@@ -175,7 +173,8 @@ void loop() {
       // get target client ID from message
       uint8_t targetClientId = text[0];
 
-      if(targetClientId != config.getClientId() && targetClientId != 0) {
+      // client ID 255 is broadcast
+      if(targetClientId != config.getClientId() && targetClientId != 255) {
         // not for me
         continue;
       }
@@ -188,7 +187,7 @@ void loop() {
       }
 
       // command to set new client ID: "X:<value>" where <value> is 0-255
-      if(text[1]=='X' && strlen(text+1)>2) {
+      if(text[1]=='X' && strlen(text+1)>2 && (targetClientId==config.getClientId() || config.getClientId()==255)) {
         int clientId = atoi(text + 3);
         if(clientId > 0 && clientId <= 255) {
           // set new client ID and update payload
@@ -228,13 +227,14 @@ void loop() {
       strcpy(payloadText,"L:1");
       radio.write( payload,sizeof(payload) );
       radio.txStandBy();              // Wait for the transmission to complete
+      delayMicroseconds(10000);
 
       // Now set the module as receiver and wait for commands
       radio.openReadingPipe(1, nRF24Addresses[1]);
       radio.startListening();   
     }
     else {
-      delay(10); // small delay to avoid busy loop
+      delayMicroseconds(10000); // small delay to avoid busy loop
     }
   }
   radio.stopListening();          // set module as transmitter
@@ -243,6 +243,7 @@ void loop() {
   radio.write( payload,sizeof(payload) );
 
   radio.txStandBy();              // Wait for the transmission to complete
+  delayMicroseconds(10000);
 }
 
 
@@ -276,6 +277,8 @@ ISR (PCINT0_vect) {
 }
 ISR (PCINT1_vect) {  
 }
+
+
 
 // ISR for bad interrupt
 // This is a catch-all for any interrupts that don't have a specific handler
@@ -346,7 +349,13 @@ void initPWM() {
   TCCR0A = _BV(WGM00)  | _BV(WGM01) |    // Fast PWM mode with TOP = OxFF
            _BV(COM0B0) |_BV(COM0B1);     // set OC0B on compare match, clear at BOTTOM (inverted PWM)
 
-  TCCR0B = _BV(CS01);                    // Prescaler = 8
+  #if(F_CPU == 1000000L)
+    TCCR0B = _BV(CS01);                  // Prescaler = 8
+  #elif(F_CPU == 8000000L)
+    TCCR0B = _BV(CS00) | _BV(CS01);      // Prescaler = 64
+  #else
+    #error "Unsupported F_CPU for PWM initialization"
+  #endif
            
   OCR0B = 0;                             // Initial duty cycle = 0%
 }

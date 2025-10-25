@@ -11,7 +11,7 @@
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 1
+ * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
@@ -25,6 +25,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include "light_ws2812.h"
 
 #include "Configuration.h"
 
@@ -39,20 +40,26 @@ const byte nRF24Addresses[][6] = {"1clnt","remot"};
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
+// global configuration object
+Configuration config;
+
 // global RF24 object and payload buffer
 RF24          radio(PB1, PB2);           // create a global RF24 object, CE, CSN
 char          payload[nRF24PayloadSize]; // create a payload buffer
 char*         payloadText = payload+1;   // pointer to text in payload, skipping first byte (client ID)
 
-// global configuration object
-Configuration config;
+// global LED array for WS2812
+const uint8_t MAX_NUM_LEDS = 64;
+struct cRGB  ledArray[MAX_NUM_LEDS];
 
 // Function prototypes
-void   initAdc();                          // initialize ADC for battery voltage measurement
-double readBatteryVoltage();               // read battery voltage
-void   initPWM();                          // initialize PWM on PA7
-void   setPWMDutyCycle(uint8_t dutyCycle); // set PWM duty cycle on PA7 (0-100)
-void   enterSleep();                       // enter sleep mode
+void   initAdc();                              // initialize ADC for battery voltage measurement
+double readBatteryVoltage();                   // read battery voltage
+void   initializePWM();                        // initialize PWM on PA7
+void   setPWMDutyCycle(uint8_t dutyCycle);     // set PWM duty cycle on PA7 (0-100)
+void   initializeLedStrip();                   // initialize WS2812 LED strip
+void   applyLedStripPattern(uint8_t pattern) ; // apply LED strip pattern
+void   enterSleep();                           // enter sleep mode
 
 
 void setup() {
@@ -73,6 +80,15 @@ void setup() {
  * - pin 13: PA0,ADC0    - Battery voltage measurement
  */
 
+  // ensure timier0 runs at 1MHz
+  #if(F_CPU == 1000000L)
+    TCCR0B = _BV(CS01);                  // Prescaler = 8
+  #elif(F_CPU == 8000000L)
+    TCCR0B = _BV(CS00) | _BV(CS01);      // Prescaler = 64
+  #else
+    #error "Unsupported F_CPU for PWM initialization"
+  #endif
+
   // set pin modes
   DDRB  &= ~_BV(PB0);            // pin  2: Set PB0 as input: motion sensor 1
   DDRB  |=  _BV(PB1);            // pin  3: Set PB1 as output: CE for nRF24L01
@@ -86,7 +102,13 @@ void setup() {
   DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
   DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
 
-  initPWM();                    // initialize PWM on PA7
+  #ifdef LED_TYPE_PWM
+    initializePWM();                     // initialize PWM on PA7
+  #endif
+
+  #ifdef LED_TYPE_WS2812
+    initializeLedStrip();
+  #endif
 
   // sore client ID in 1st byte of payload
   payload[0] = config.getClientId();
@@ -103,6 +125,8 @@ void setup() {
 
   // initialize ADC for battery voltage measurement
   initAdc();
+
+
 
   // send connect message
   strcpy(payloadText,"C:1");
@@ -131,7 +155,7 @@ void loop() {
     
     setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
 
-    delayMicroseconds(100000UL);    // let voltage stabilize
+    delayMicroseconds(50000U);    // let voltage stabilize
     radio.powerUp();              // Power up the radio
     delayMicroseconds(10000);
 
@@ -219,6 +243,18 @@ void loop() {
         if(threshold >= 0 && threshold <= 255) {
           config.setIlluminanceThreshold((uint8_t)threshold);
         }
+      }
+
+      // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
+      if(text[1]=='L' && strlen(text+1)>2) {
+        // for PWM, pattern codes are not supported
+        #ifdef LED_TYPE_WS2812
+          int patternCode = atoi(text + 3);
+          if(patternCode >= 0 && patternCode <= 255) {
+            // apply pattern
+            applyLedStripPattern((uint8_t)patternCode);
+          }
+        #endif
       }
 
       // ready to receive the next command
@@ -342,20 +378,14 @@ double readBatteryVoltage(){
 /**
  * Initialize PWM for PA7 (ATtiny84 pin 6), connected to OC0B (Output Compare B for 8-bit Timer0)
  */
-void initPWM() {
+void initializePWM() {
   DDRA |= _BV(PA7);                      // Set PA7 as output
 
   // configure timer control
   TCCR0A = _BV(WGM00)  | _BV(WGM01) |    // Fast PWM mode with TOP = OxFF
            _BV(COM0B0) |_BV(COM0B1);     // set OC0B on compare match, clear at BOTTOM (inverted PWM)
 
-  #if(F_CPU == 1000000L)
-    TCCR0B = _BV(CS01);                  // Prescaler = 8
-  #elif(F_CPU == 8000000L)
-    TCCR0B = _BV(CS00) | _BV(CS01);      // Prescaler = 64
-  #else
-    #error "Unsupported F_CPU for PWM initialization"
-  #endif
+
            
   OCR0B = 0;                             // Initial duty cycle = 0%
 }
@@ -372,3 +402,46 @@ void setPWMDutyCycle(uint8_t dutyCycle) {
   OCR0B = compareValue;
 }
 
+void   initializeLedStrip() {
+    // Initialize WS2812 LED strip
+    uint8_t numLeds = 3;
+
+    for(uint8_t i=0; i<numLeds; i++) {
+      ledArray[i].r = 0;
+      ledArray[i].g = 0;
+      ledArray[i].b = 0;
+    }
+    ws2812_setleds(ledArray, numLeds);
+}
+
+void applyLedStripPattern(uint8_t pattern) {
+    uint8_t numLeds = 3;
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+
+    switch(pattern) {
+      case 1: // red
+        r = 255; g = 0; b = 0;
+        break;
+      case 2: // green
+        r = 0; g = 255; b = 0;
+        break;
+      case 3: // blue
+        r = 0; g = 0; b = 255;
+        break;
+      case 4: // white
+        r = 255; g = 255; b = 255;
+        break;
+      default: // off
+        r = 0; g = 0; b = 0;
+        break;
+    }
+
+    for(uint8_t i=0; i<numLeds; i++) {
+      ledArray[i].r = r;
+      ledArray[i].g = g;
+      ledArray[i].b = b;
+    }
+    ws2812_setleds(ledArray, numLeds);
+}

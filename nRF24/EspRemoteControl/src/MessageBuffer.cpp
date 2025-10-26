@@ -6,8 +6,8 @@
 MessageBuffer::MessageBuffer() {
   // Initialize all messages as empty
   for (uint8_t i = 0; i < BUFFER_SIZE; ++i) {
-    messages[i].index = i;
-    messages[i].client_id = 0;   // 0 indicates an empty slot
+    messages[i].index      = i;
+    messages[i].client_id  = 0;  // 0 indicates an empty slot
     messages[i].content[0] = 0;  // Empty string
   }
 }
@@ -44,7 +44,7 @@ bool MessageBuffer::getMessage(uint8_t client_id, Message *message) const {
     if (messages[i].client_id == client_id) {
       *message = messages[i];
 
-      Debug::log("Buffer::getMessage client:%d message:%s found", client_id, message->content);
+      Debug::log("Buffer::getMessage client:%d message:%s", client_id, message->content);
       return true;
     }
   }

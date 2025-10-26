@@ -443,5 +443,6 @@ void applyLedStripPattern(uint8_t pattern) {
       ledArray[i].g = g;
       ledArray[i].b = b;
     }
-    ws2812_setleds(ledArray, numLeds);
+    //ws2812_setleds(ledArray, numLeds);
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
 }

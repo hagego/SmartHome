@@ -15,7 +15,6 @@ class MqttInfo {
         // MQTT publish topics
         static const char* topicPublishConnected;
         static const char* topicPublishIsAlive;
-        static const char* topicPublishPayloadReceived;
         static const char* topicPublishDebugMessage;
 
         // MQTT subscription topics

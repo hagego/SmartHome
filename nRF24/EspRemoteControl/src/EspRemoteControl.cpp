@@ -167,6 +167,10 @@ void loop() {
     ESP.restart();
   }
   
+  radio.setAutoAck(1);            // Ensure autoACK is enabled
+  radio.setRetries(5,15);         // Max delay between retries & number of retries
+  radio.setPALevel(RF24_PA_HIGH); // Set power level to high
+  radio.setPayloadSize(nRF24PayloadSize);
 
   uint8_t pipe;
   while(radio.available(&pipe)) {
@@ -175,29 +179,25 @@ void loop() {
     // first byte is client ID
     uint8_t client_id = text[0];
     Debug::log("Payload received on address %d, client %d: %s",pipe,client_id,text+1);
-
-    mqttClient.publish(MqttInfo::topicPublishPayloadReceived, buffer);
         
     if(text[1] == 'L' && text[3] == '1') {
       // client is ready to receive commands
-      Debug::log("Client %d is ready to receive commands\n",client_id);
+      Debug::log("Client %d is ready to receive commands",client_id);
 
       MessageBuffer::Message message;
       if(messageBuffer.getMessage(client_id, &message)) {
         radio.stopListening();          // set module as transmitter
-        radio.setAutoAck(1);            // Ensure autoACK is enabled
+        radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
         radio.setRetries(5,15);         // Max delay between retries & number of retries
-        radio.setPALevel(RF24_PA_HIGH); // Set power level to high
-        radio.setPayloadSize(nRF24PayloadSize);
-        radio.openWritingPipe(nRF24Addresses[pipe]); // Write to device address
 
-        Debug::log("Sending message to client %d: %s\n",client_id,message.content);
+        Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,message.content);
 
         char writeBuffer[nRF24PayloadSize] = {0};
         writeBuffer[0] = client_id;
         strncpy(writeBuffer+1, message.content, sizeof(writeBuffer)-2);
         if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
           // delete message from buffer
+          Debug::log("Message acknowledged by client %d, deleting from buffer",client_id);
           messageBuffer.deleteMessage(&message);
         }
 
@@ -206,8 +206,7 @@ void loop() {
           radio.openReadingPipe(i, nRF24Addresses[i]);
         }
 
-        radio.setPayloadSize(nRF24PayloadSize);
-        radio.startListening();                   // set module as receiver
+        radio.startListening();                   // set module as receiver again
       } // message was sent
     } // client is listening
   } // message was received
@@ -270,16 +269,37 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
     return;
   }
 
-  // check for client command topic
+  // check for client command topic. A commnand is stored in the message buffer until it
+  // could be successfully sent to the client with acknowledgement
   size_t prefixLen = strlen(MqttInfo::topicSubscribeClientCommand)-1; // exclude trailing #
   if(strncmp(topicBuffer, MqttInfo::topicSubscribeClientCommand, prefixLen)==0) {
     // extract client ID from topic
     uint8_t client_id = atoi(topicBuffer + prefixLen);
-
     Debug::log("MQTT command for client %d: %s",client_id,payloadString);
 
-    // store message in buffer
-    messageBuffer.addMessage(client_id, payloadString);
+    // try to send message immediately if client is listening
+    radio.stopListening();          // set module as transmitter
+    radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
+
+    Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,payloadString);
+
+    char writeBuffer[nRF24PayloadSize] = {0};
+    writeBuffer[0] = client_id;
+    strncpy(writeBuffer+1, payloadString, sizeof(writeBuffer)-2);
+    radio.setRetries(4,2);         // Max delay between retries & number of retries
+    if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
+      // command acknowledged by client - no need to store in buffer
+      Debug::log("Message acknowledged by client %d, consider done",client_id);
+    }
+    else {
+      // store message in buffer
+      messageBuffer.addMessage(client_id, payloadString);
+    }
+
+    for(uint8 i=0; i<sizeof(nRF24Addresses)/sizeof(nRF24Addresses[0]); i++) {
+      radio.openReadingPipe(i, nRF24Addresses[i]);
+    }
+    radio.startListening(); 
 
     return;
   }

@@ -3,7 +3,6 @@
 // MQTT publish topics
 const char* MqttInfo::topicPublishConnected       = MQTT_PREFIX "connected";        // gets published right after connect
 const char* MqttInfo::topicPublishIsAlive         = MQTT_PREFIX "isAlive";          // gets published right after connect
-const char* MqttInfo::topicPublishPayloadReceived = MQTT_PREFIX "payloadReceived";  // gets published when a payload is received
 const char* MqttInfo::topicPublishDebugMessage    = MQTT_PREFIX "debugMessage";     // debug messages (if enabled)
 
 // MQTT subscription topics

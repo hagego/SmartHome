@@ -25,9 +25,15 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
-#include "light_ws2812.h"
+
+#ifdef LED_TYPE_WS2812
+  #include "light_ws2812.h"
+#endif
+#include "hp_BH1750.h"
 
 #include "Configuration.h"
+
+
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
@@ -48,18 +54,29 @@ RF24          radio(PB1, PB2);           // create a global RF24 object, CE, CSN
 char          payload[nRF24PayloadSize]; // create a payload buffer
 char*         payloadText = payload+1;   // pointer to text in payload, skipping first byte (client ID)
 
+// global hp_BH1750 object
+#ifdef LED_TYPE_PWM
+hp_BH1750 bh1750;
+#endif
+
 // global LED array for WS2812
-const uint8_t MAX_NUM_LEDS = 64;
-struct cRGB  ledArray[MAX_NUM_LEDS];
+#ifdef LED_TYPE_WS2812
+  const uint8_t MAX_NUM_LEDS = 64;
+  struct cRGB  ledArray[MAX_NUM_LEDS];
+#endif
 
 // Function prototypes
 void   initAdc();                              // initialize ADC for battery voltage measurement
-double readBatteryVoltage();                   // read battery voltage
+void   readAndSendBatteryVoltage();            // measures battery voltage and sends it via nRF24
 void   initializePWM();                        // initialize PWM on PA7
 void   setPWMDutyCycle(uint8_t dutyCycle);     // set PWM duty cycle on PA7 (0-100)
+#ifdef LED_TYPE_WS2812
 void   initializeLedStrip();                   // initialize WS2812 LED strip
 void   applyLedStripPattern(uint8_t pattern) ; // apply LED strip pattern
+#endif
 void   enterSleep();                           // enter sleep mode
+void   readAndSendIlluminance();               // read illuminance using BH1750 sensor and send via nRF24
+
 
 
 void setup() {
@@ -104,6 +121,7 @@ void setup() {
 
   #ifdef LED_TYPE_PWM
     initializePWM();                     // initialize PWM on PA7
+    bh1750.begin(BH1750_TO_GROUND);      // set BH1750 I2C address and init sensor
   #endif
 
   #ifdef LED_TYPE_WS2812
@@ -133,10 +151,12 @@ void setup() {
   radio.write( payload,sizeof(payload) );
 
   // measure battery voltage and send
-  double voltage = readBatteryVoltage();   // read voltage
-  strcpy(payloadText,"V:");
-  dtostrf(voltage, 3, 1, payloadText+2);   // convert voltage to string
-  radio.write( payload,sizeof(payload) );  // Send data
+  readAndSendBatteryVoltage();
+
+  // measure illuminance and send
+  #ifdef LED_TYPE_PWM
+    readAndSendIlluminance();
+  #endif
 
   radio.txStandBy();                         // Wait for the transmission to complete
 }
@@ -166,10 +186,10 @@ void loop() {
     radio.write( payload,sizeof(payload) );
 
     // measure battery voltage and send
-    double voltage = readBatteryVoltage();   // read voltage
-    strcpy(payloadText,"V:");
-    dtostrf(voltage, 3, 1, payloadText+2);   // convert voltage to string
-    radio.write( payload,sizeof(payload) );  // Send data
+    readAndSendBatteryVoltage();   // read voltage
+
+    readAndSendIlluminance();
+
   #endif
 
   // send ready to listen message
@@ -245,17 +265,17 @@ void loop() {
         }
       }
 
+      #ifdef LED_TYPE_WS2812
       // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
       if(text[1]=='L' && strlen(text+1)>2) {
         // for PWM, pattern codes are not supported
-        #ifdef LED_TYPE_WS2812
-          int patternCode = atoi(text + 3);
-          if(patternCode >= 0 && patternCode <= 255) {
-            // apply pattern
-            applyLedStripPattern((uint8_t)patternCode);
-          }
-        #endif
+        int patternCode = atoi(text + 3);
+        if(patternCode >= 0 && patternCode <= 255) {
+          // apply pattern
+          applyLedStripPattern((uint8_t)patternCode);
+        }
       }
+      #endif
 
       // ready to receive the next command
       radio.stopListening();          // set module as transmitter
@@ -359,10 +379,9 @@ void initAdc() {
 
 
 /**
- * measure battery voltage on ADC
- * @return voltage in V
+ * measure battery voltage on ADC and transmit it via nRF24
  */
-double readBatteryVoltage(){
+void readAndSendBatteryVoltage(){
   ADCSRA |= _BV(ADEN);									  // enable ADC
 	delay(100);									            // settle
   ADCSRA |= _BV(ADSC);                    // start a conversion
@@ -371,7 +390,10 @@ double readBatteryVoltage(){
 	ADCSRA &= ~_BV(ADEN);									  // disable ADC again
 
   double voltage = (double)reading * VREF * (R_VCC + R_GND) / (R_GND * 1024.0); // calculate voltage
-  return voltage; // return voltage
+
+  strcpy(payloadText,"V:");
+  dtostrf(voltage, 3, 1, payloadText+2);   // convert voltage to string
+  radio.write( payload,sizeof(payload) );  // Send data
 }
 
 
@@ -402,6 +424,7 @@ void setPWMDutyCycle(uint8_t dutyCycle) {
   OCR0B = compareValue;
 }
 
+#ifdef LED_TYPE_WS2812
 void   initializeLedStrip() {
     // Initialize WS2812 LED strip
     uint8_t numLeds = 3;
@@ -413,36 +436,61 @@ void   initializeLedStrip() {
     }
     ws2812_setleds(ledArray, numLeds);
 }
+#endif
 
 void applyLedStripPattern(uint8_t pattern) {
-    uint8_t numLeds = 3;
-    uint8_t r = 0;
-    uint8_t g = 0;
-    uint8_t b = 0;
+    #ifdef LED_TYPE_WS2812
+      uint8_t numLeds = 3;
+      uint8_t r = 0;
+      uint8_t g = 0;
+      uint8_t b = 0;
 
-    switch(pattern) {
-      case 1: // red
-        r = 255; g = 0; b = 0;
-        break;
-      case 2: // green
-        r = 0; g = 255; b = 0;
-        break;
-      case 3: // blue
-        r = 0; g = 0; b = 255;
-        break;
-      case 4: // white
-        r = 255; g = 255; b = 255;
-        break;
-      default: // off
-        r = 0; g = 0; b = 0;
-        break;
+      switch(pattern) {
+        case 1: // red
+          r = 255; g = 0; b = 0;
+          break;
+        case 2: // green
+          r = 0; g = 255; b = 0;
+          break;
+        case 3: // blue
+          r = 0; g = 0; b = 255;
+          break;
+        case 4: // white
+          r = 255; g = 255; b = 255;
+          break;
+        default: // off
+          r = 0; g = 0; b = 0;
+          break;
+      }
+
+      for(uint8_t i=0; i<numLeds; i++) {
+        ledArray[i].r = r;
+        ledArray[i].g = g;
+        ledArray[i].b = b;
+      }
+      //ws2812_setleds(ledArray, numLeds);
+      ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+    #endif
+}
+
+/**
+ * read illuminance using BH1750 sensor via direct I2C communication
+ * @return illuminance in lux
+ */
+void readAndSendIlluminance() {
+
+  double lux = 0.0;
+  #ifdef LED_TYPE_PWM
+    //bh1750.calibrateTiming();         //B: calibrate the timings, about 855ms with a bad chip
+    bh1750.start();            //C: start the first measurement
+
+    if (bh1750.hasValue()) {          //D: most important function of this library!
+      lux = bh1750.getLux();   //E: read the result
+      bh1750.start();          //F: start next measurement
     }
 
-    for(uint8_t i=0; i<numLeds; i++) {
-      ledArray[i].r = r;
-      ledArray[i].g = g;
-      ledArray[i].b = b;
-    }
-    //ws2812_setleds(ledArray, numLeds);
-    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+  strcpy(payloadText,"I:");
+  dtostrf(lux, 5, 0, payloadText+2);   // convert lux to string
+  radio.write( payload,sizeof(payload) );  // Send data
+  #endif
 }

@@ -7,10 +7,11 @@ Configuration::Configuration()
     uint8_t isInitialized = readByteFromEEPROM(ADDRESS_IS_INITIALIZED);
     if (isInitialized != MAGIC_NUMBER) {
         // not initialized, set default values
-        clientId = 255; // default client ID 255
-        timeout  = 300; // default timeout 300 seconds
-        pwmValue = 100; // default PWM value 100%
-        illuminanceThreshold = 50; // default illuminance threshold 50 lux
+        clientId = 255;             // default client ID 255
+        timeout  = 300;             // default timeout 300 seconds
+        pwmValue = 100;             // default PWM value 100%
+        illuminanceThreshold = 50;  // default illuminance threshold 50 lux
+        ledCount = 0;               // default LED count 0
 
         // write defaults to EEPROM
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
@@ -18,12 +19,14 @@ Configuration::Configuration()
         writeWordToEEPROM(ADDRESS_TIMEOUT, timeout);
         writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
         writeByteToEEPROM(ADDRESS_ILLUMINANCE, illuminanceThreshold);
+        writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
     } else {
         // read values from EEPROM
-        clientId = readByteFromEEPROM(ADDRESS_CLIENT_ID);
-        timeout = readWordFromEEPROM(ADDRESS_TIMEOUT);
-        pwmValue = readByteFromEEPROM(ADDRESS_PWM_VALUE);
+        clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
+        timeout              = readWordFromEEPROM(ADDRESS_TIMEOUT);
+        pwmValue             = readByteFromEEPROM(ADDRESS_PWM_VALUE);
         illuminanceThreshold = readByteFromEEPROM(ADDRESS_ILLUMINANCE);
+        ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
     }
 }
 
@@ -46,6 +49,7 @@ void Configuration::setTimeout(uint16_t timeout)
     this->timeout = timeout;
     writeWordToEEPROM(ADDRESS_TIMEOUT, timeout);
 }
+
 uint8_t Configuration::getPwmValue()
 {
     return pwmValue;
@@ -55,6 +59,7 @@ void Configuration::setPwmValue(uint8_t pwmValue)
     this->pwmValue = pwmValue;
     writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
 }
+
 uint8_t Configuration::getIlluminanceThreshold()
 {
     return illuminanceThreshold;
@@ -64,6 +69,17 @@ void Configuration::setIlluminanceThreshold(uint8_t threshold)
     this->illuminanceThreshold = threshold;
     writeByteToEEPROM(ADDRESS_ILLUMINANCE, threshold);
 }
+
+uint8_t Configuration::getLedCount()
+{
+    return ledCount;
+}
+void Configuration::setLedCount(uint8_t ledCount)
+{
+    this->ledCount = ledCount;
+    writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
+}
+
 
 uint8_t  Configuration::readByteFromEEPROM(uint8_t address)
 {

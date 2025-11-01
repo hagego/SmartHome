@@ -28,6 +28,10 @@ class Configuration {
     uint8_t getIlluminanceThreshold();
     void setIlluminanceThreshold(uint8_t threshold);
 
+    // gets/sets WS2812 LED count
+    uint8_t getLedCount();
+    void setLedCount(uint8_t ledCount);
+
   private:
   
     // data members
@@ -35,6 +39,7 @@ class Configuration {
     uint16_t timeout;
     uint8_t  pwmValue;
     uint8_t  illuminanceThreshold;
+    uint8_t  ledCount;
 
     // addresses
     static const uint8_t ADDRESS_IS_INITIALIZED = 0;  // stores a magic number if initialized
@@ -42,6 +47,7 @@ class Configuration {
     static const uint8_t ADDRESS_TIMEOUT        = 2;  // timeout in seconds, 2 byte
     static const uint8_t ADDRESS_PWM_VALUE      = 4;  // PWM value in percent (1 byte)
     static const uint8_t ADDRESS_ILLUMINANCE    = 5;  // illuminance threshold in lux (1 byte)
+    static const uint8_t ADDRESS_LED_COUNT      = 6;  // WS2812 LED count (1 byte)
 
     // magic number to check if EEPROM has been initialized with default data
     static const uint8_t MAGIC_NUMBER           = 42;

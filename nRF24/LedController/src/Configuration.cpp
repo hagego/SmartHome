@@ -8,9 +8,9 @@ Configuration::Configuration()
     if (isInitialized != MAGIC_NUMBER) {
         // not initialized, set default values
         clientId = 255;             // default client ID 255
-        timeout  = 300;             // default timeout 300 seconds
+        timeout  = 60;              // default timeout 60 seconds
         pwmValue = 100;             // default PWM value 100%
-        illuminanceThreshold = 50;  // default illuminance threshold 50 lux
+        illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
 
         // write defaults to EEPROM

@@ -3,13 +3,23 @@
 
 Configuration::Configuration()
 {
+    // not initialized, set default values
+    clientId = 255;             // default client ID 255
+    timeout  = 60;              // default timeout 60 seconds
+    pwmValue = 10;              // default PWM value 100%
+    illuminanceThreshold = 20;  // default illuminance threshold 20 lux
+    ledCount = 0;               // default LED count 0
+}
+
+void Configuration::init()
+{
     // check if EEPRIM has been initialized with default values
     uint8_t isInitialized = readByteFromEEPROM(ADDRESS_IS_INITIALIZED);
     if (isInitialized != MAGIC_NUMBER) {
         // not initialized, set default values
         clientId = 255;             // default client ID 255
         timeout  = 60;              // default timeout 60 seconds
-        pwmValue = 100;             // default PWM value 100%
+        pwmValue = 10;              // default PWM value 100%
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
 
@@ -29,6 +39,7 @@ Configuration::Configuration()
         ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
     }
 }
+
 
 uint8_t Configuration::getClientId()
 {

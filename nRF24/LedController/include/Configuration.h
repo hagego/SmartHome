@@ -12,6 +12,9 @@ class Configuration {
     // default constructor
     Configuration();
 
+    // initializes the configuration by reading from EEPROM or setting defaults
+    void init();
+
     // gets/sets client ID
     uint8_t getClientId();
     void setClientId(uint8_t clientId);

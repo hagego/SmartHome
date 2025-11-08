@@ -27,7 +27,7 @@ const uint8_t PIN_CSN = 0;  // D3 on D1 mini (GPIO0)
 // nRF24 addresses to listen to
 // 0:   transmit
 // 1-5: <i>clnt: clients 1-5
-uint8_t nRF24Addresses[][6] = {"remot", "1clnt", "2clnt", "3clnt", "4clnt", "5clnt"}; // max. 6 addresses possible
+uint8_t nRF24Addresses[][6] = {"ctrl\0", "1clnt", "2clnt", "3clnt", "4clnt", "5clnt"}; // max. 6 addresses possible
 
 
 // nRF24 paload size
@@ -179,6 +179,10 @@ void loop() {
     // first byte is client ID
     uint8_t client_id = text[0];
     Debug::log("Payload received on address %d, client %d: %s",pipe,client_id,text+1);
+
+    // MqttInfo::topicPublishClientMessage
+    sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
+    mqttClient.publish(buffer, text+3);
         
     if(text[1] == 'L' && text[3] == '1') {
       // client is ready to receive commands

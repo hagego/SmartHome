@@ -45,7 +45,7 @@ const double VREF  = 1.1;       // internal reference voltage
 
 // nRF24 addresses to use (channel) (5 bytes)
 // address 0 is used for writing, address 1 for reading
-const byte nRF24Addresses[][6] = {"1clnt","remot"};
+const byte nRF24Addresses[][6] = {"1clnt","ctrl\0"};
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
@@ -97,7 +97,7 @@ void setup() {
  * - pin 13: PA0,ADC0    - Battery voltage measurement
  */
 
-  // ensure timier0 runs at 1MHz
+  // ensure timer0 runs at 1MHz
   #if(F_CPU == 1000000L)
     TCCR0B = _BV(CS01);                  // Prescaler = 8
   #elif(F_CPU == 8000000L)
@@ -105,6 +105,9 @@ void setup() {
   #else
     #error "Unsupported F_CPU for PWM initialization"
   #endif
+
+  // initialize configuration
+  config.init();
 
   // set pin modes
   DDRB  &= ~_BV(PB0);            // pin  2: Set PB0 as input: motion sensor 1
@@ -118,6 +121,8 @@ void setup() {
   DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
   DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
   DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
+
+  PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver => LED off
 
   #ifdef LED_TYPE_PWM
     initializePWM();                     // initialize PWM on PA7
@@ -158,6 +163,13 @@ void setup() {
     readAndSendIlluminance();
   #endif
 
+  #ifdef LED_TYPE_WS2812
+    // send LED count
+    payload[1] = 'N';
+    itoa(config.getLedCount(), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+  #endif
+
   radio.txStandBy();                         // Wait for the transmission to complete
 }
 
@@ -180,7 +192,7 @@ void loop() {
     if(illuminance <= config.getIlluminanceThreshold()) {
       // ambient light is insufficient, turn on LED
       setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
-      PORTA |= _BV(PA3);            // Set PA3 high: enables DCDC for LED driver
+      PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
     }
 
     // send motion detected message
@@ -192,6 +204,7 @@ void loop() {
     // measure battery voltage and send
     readAndSendBatteryVoltage();   // read voltage
   #endif
+  
 
   // send ready to listen message
   payload[1] = 'L';
@@ -280,25 +293,37 @@ void loop() {
           applyLedStripPattern((uint8_t)patternCode);
         }
       }
+
+      // command to set LED count: "N:<value>" where <value> is number of LEDs
+      if(text[1]=='N' && strlen(text+1)>2) {
+        int ledCount = atoi(text + 3);
+        if(ledCount >= 0 && ledCount <= MAX_NUM_LEDS) {
+          config.setLedCount((uint8_t)ledCount);
+        }
+      }
       #endif
 
-      // ready to receive the next command
-      radio.stopListening();          // set module as transmitter
+      #ifndef MULTI_CLIENT
+        // send ready to receive the next command
+        radio.stopListening();          // set module as transmitter
 
-      payload[1] = 'L';
-      payload[3] = '1';
-      payload[4] = 0;
-      radio.write( payload,sizeof(payload) );
-      radio.txStandBy();              // Wait for the transmission to complete
-      delayMicroseconds(10000);
+        payload[1] = 'L';
+        payload[3] = '1';
+        payload[4] = 0;
+        radio.write( payload,sizeof(payload) );
+        radio.txStandBy();              // Wait for the transmission to complete
+        delayMicroseconds(10000);
 
-      // Now set the module as receiver and wait for commands
-      radio.openReadingPipe(1, nRF24Addresses[1]);
-      radio.startListening();   
+        // Now set the module as receiver and wait for commands
+        radio.openReadingPipe(1, nRF24Addresses[1]);
+        radio.startListening();   
+      #endif
     }
-    else {
-      delayMicroseconds(10000); // small delay to avoid busy loop
-    }
+    #ifndef MULTI_CLIENT
+      else {
+        delayMicroseconds(10000); // small delay to avoid busy loop
+      }
+    #endif
   }
   radio.stopListening();          // set module as transmitter
 
@@ -319,7 +344,7 @@ void enterSleep() {
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
   GIMSK  |= _BV(PCIE0);                  // Enable Pin Change Interrupts
  
-  PCMSK1 |= _BV(PCINT8);            // Enable pin change interrupt on PIN_MOTION1
+  PCMSK1 |= _BV(PCINT8);                 // Enable pin change interrupt on PIN_MOTION1
 
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
   sleep_enable();                        // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
@@ -342,8 +367,6 @@ ISR (PCINT0_vect) {
 }
 ISR (PCINT1_vect) {  
 }
-
-
 
 // ISR for bad interrupt
 // This is a catch-all for any interrupts that don't have a specific handler
@@ -401,7 +424,7 @@ void readAndSendBatteryVoltage(){
   double voltage = (double)reading * VREF * (R_VCC + R_GND) / (R_GND * 1024.0); // calculate voltage
 
   payload[1] = 'V';
-  dtostrf(voltage, 3, 1, payload+3);   // convert voltage to string
+  dtostrf(voltage, 4, 2, payload+3);   // convert voltage to string
   radio.write( payload,sizeof(payload) );  // Send data
 }
 
@@ -422,7 +445,7 @@ void   initializeLedStrip() {
 }
 
 void applyLedStripPattern(uint8_t pattern) {
-      uint8_t numLeds = 3;
+      uint8_t numLeds = config.getLedCount();
       uint8_t r = 0;
       uint8_t g = 0;
       uint8_t b = 0;
@@ -451,7 +474,11 @@ void applyLedStripPattern(uint8_t pattern) {
         ledArray[i].b = b;
       }
       //ws2812_setleds(ledArray, numLeds);
+      #ifdef TRIGGERED
+      ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
+      #else
       ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+      #endif
 }
 #endif
 
@@ -502,7 +529,7 @@ float readAndSendIlluminance() {
   }
 
   payload[1] = 'I';
-  dtostrf(lux, 5, 0, payload+3);   // convert lux to string
+  dtostrf(lux, 1, 0, payload+3);   // convert lux to string
   radio.write( payload,sizeof(payload) );  // Send data
 
   return lux;

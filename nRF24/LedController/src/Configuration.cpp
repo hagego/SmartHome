@@ -18,7 +18,7 @@ void Configuration::init()
     if (isInitialized != MAGIC_NUMBER) {
         // not initialized, set default values
         clientId = 255;             // default client ID 255
-        timeout  = 60;              // default timeout 60 seconds
+        timeout  = 0;               // default timeout 60 seconds
         pwmValue = 10;              // default PWM value 100%
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0

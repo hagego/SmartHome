@@ -45,7 +45,7 @@ const double VREF  = 1.1;       // internal reference voltage
 
 // nRF24 addresses to use (channel) (5 bytes)
 // address 0 is used for writing, address 1 for reading
-const byte nRF24Addresses[][6] = {"1clnt","ctrl\0"};
+uint8_t nRF24Addresses[][6] = {RF24_ADDR_SEND, RF24_ADDR_RECEIVE}; 
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
@@ -106,7 +106,7 @@ void setup() {
     #error "Unsupported F_CPU for PWM initialization"
   #endif
 
-  // initialize configuration
+  // wait 1s before initializing configuration
   config.init();
 
   // set pin modes
@@ -153,6 +153,11 @@ void setup() {
   payload[1] = 'C';
   payload[3] = '1';
   payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+
+  // send timeout
+  payload[1] = 'T';
+  itoa(config.getTimeout(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
 
   // measure battery voltage and send

@@ -7,9 +7,6 @@
 #define MQTT_SERVER "192.168.178.27"    // IP address of the MQTT broker
 #define MQTT_PORT   1883                // port of the MQTT broker
 
-#define MQTT_CLIENT_ID             "nRF24Controller"        // client ID of the MQTT client
-#define MQTT_PREFIX                "nRF24Controller/"       // prefix for all MQTT topics related to remote control
-
 class MqttInfo {
     public:
         // MQTT publish topics
@@ -20,7 +17,6 @@ class MqttInfo {
 
         // MQTT subscription topics
         static const char* topicSubscribeEnableMqttDebug;
-        static const char* topicSubscribeDebugCommand;
         static const char* topicSubscribeClientCommand;
 };
 

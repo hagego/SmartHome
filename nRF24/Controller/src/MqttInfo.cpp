@@ -8,6 +8,5 @@ const char* MqttInfo::topicPublishClientMessage   = MQTT_PREFIX "clientMessage";
 
 // MQTT subscription topics
 const char* MqttInfo::topicSubscribeEnableMqttDebug = MQTT_PREFIX "enableMqttDebug";  // enable or disable debug messages (payload "1" or "0")
-const char* MqttInfo::topicSubscribeDebugCommand    = MQTT_PREFIX "debugCommand";     // debug command
 const char* MqttInfo::topicSubscribeClientCommand   = MQTT_PREFIX "clientCommand/+";  // command to send to a nRF24 client, suffix is the client ID
 

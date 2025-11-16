@@ -45,25 +45,25 @@ RF24         radio(PIN_CE, PIN_CSN);  // create an RF24 object, CE, CSN
 // global MessageBuffer object
 MessageBuffer messageBuffer;
  
- // global buffer object for sprinf and other string operations
- char buffer[256];
+// global buffer object for sprinf and other string operations
+char buffer[256];
 
-  // full MQTT client name (client ID + IP address)
- char mqttFullClientName[128];
+ // full MQTT client name (client ID + IP address)
+char mqttFullClientName[128];
  
- // MQTT callback function declaration
- void mqttCallback(const char topic[], byte* payload, unsigned int length);
+// MQTT callback function declaration
+void mqttCallback(const char topic[], byte* payload, unsigned int length);
 
- // register MQTT topics declaration
- void registerMqttTopics();
+// register MQTT topics declaration
+void registerMqttTopics();
 
- // send nRF24 message function declaration
- void sendNRF24Message(uint8_t client_id, const char* message);
+// send nRF24 message function declaration
+void sendNRF24Message(uint8_t client_id, const char* message);
 
- // global flag if the controller is connected to WiFi network
- bool wifiConnected = false;
+// global flag if the controller is connected to WiFi network
+bool wifiConnected = false;
 
- 
+
 void setup() {
   // initialize serial interface
   Serial.begin(SERIAL_SPEED);
@@ -146,6 +146,8 @@ void setup() {
   }
 
   radio.setAutoAck(1);            // Ensure autoACK is enabled
+  radio.enableAckPayload();       // Allow optional ack payloads
+  radio.enableDynamicAck();      // Allow dynamic ACKs
   radio.setRetries(5,15);         // Max delay between retries & number of retries
   radio.setPALevel(RF24_PA_HIGH); // Set power level to high
   radio.setPayloadSize(nRF24PayloadSize);
@@ -166,42 +168,44 @@ void loop() {
   keepAliveCounter++;
 
   // try to reconnect to WIFI if we have initially managed to connect and we are now disconnected
-  if (wifiConnected) {
-    while (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WIFI disconnected");
-      WiFi.begin(WIFI_SSID, WIFI_PSK);
-      uint8_t timeout = 60;
-      while (timeout && (WiFi.status() != WL_CONNECTED)) {
-        timeout--;
-        delay(1000);
-      }
-      if(WiFi.status() == WL_CONNECTED) {
-        Serial.println("WIFI reconnected");
+  #ifdef PORTABLE
+    if (wifiConnected) {
+      while (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WIFI disconnected");
+        WiFi.begin(WIFI_SSID, WIFI_PSK);
+        uint8_t timeout = 60;
+        while (timeout && (WiFi.status() != WL_CONNECTED)) {
+          timeout--;
+          delay(1000);
+        }
+        if(WiFi.status() == WL_CONNECTED) {
+          Serial.println("WIFI reconnected");
 
-        sprintf(buffer,"%s-%d",MQTT_CLIENT_ID,ESP.getChipId());
-        if (mqttClient.connect(buffer)) {
-          sprintf(buffer,"reconnected in loop() to MQTT broker at %s as client %s-%d, local IP=%s",MQTT_SERVER,MQTT_CLIENT_ID,ESP.getChipId(),WiFi.localIP().toString().c_str());
-          Serial.println(buffer);
+          sprintf(buffer,"%s-%d",MQTT_CLIENT_ID,ESP.getChipId());
+          if (mqttClient.connect(buffer)) {
+            sprintf(buffer,"reconnected in loop() to MQTT broker at %s as client %s-%d, local IP=%s",MQTT_SERVER,MQTT_CLIENT_ID,ESP.getChipId(),WiFi.localIP().toString().c_str());
+            Serial.println(buffer);
 
-          // resubscribe to topics
-          registerMqttTopics();
+            // resubscribe to topics
+            registerMqttTopics();
 
-          // Once connected, publish an announcement...
-          mqttClient.publish(MqttInfo::topicPublishConnected, mqttFullClientName);
+            // Once connected, publish an announcement...
+            mqttClient.publish(MqttInfo::topicPublishConnected, mqttFullClientName);
+          }
+        }
+        else {
+          Serial.println("WIFI reconnect failed. Rebooting...");
+          // reboot
+          ESP.restart();
         }
       }
-      else {
-        Serial.println("WIFI reconnect failed. Rebooting...");
-        // reboot
+
+      if(!mqttClient.connected()) {
+        Serial.println(F("MQTT connection lost - restarting"));
         ESP.restart();
       }
     }
-
-    if(!mqttClient.connected()) {
-      Serial.println(F("MQTT connection lost - restarting"));
-      ESP.restart();
-    }
-  }
+  #endif
 
 
 
@@ -322,33 +326,14 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
     uint8_t client_id = atoi(topicBuffer + prefixLen);
     Debug::log("MQTT command for client %d: %s",client_id,payloadString);
 
-    // try to send message immediately if client is listening
-    radio.stopListening();          // set module as transmitter
-    radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
-
-    Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,payloadString);
-
-    char writeBuffer[nRF24PayloadSize] = {0};
-    writeBuffer[0] = client_id;
-    strncpy(writeBuffer+1, payloadString, sizeof(writeBuffer)-2);
-    radio.setRetries(4,2);         // Max delay between retries & number of retries
-    if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
-      // command acknowledged by client - no need to store in buffer
-      Debug::log("Message acknowledged by client %d, consider done",client_id);
-    }
-    else {
-      // store message in buffer
-      messageBuffer.addMessage(client_id, payloadString);
-    }
-
-    radio.startListening(); 
-
+    sendNRF24Message(client_id, payloadString);
     return;
   }
 }
 
 void sendNRF24Message(uint8_t client_id, const char* message) {
   radio.stopListening();                    // set module as transmitter
+  radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
 
   Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,message);
 
@@ -363,8 +348,16 @@ void sendNRF24Message(uint8_t client_id, const char* message) {
   }
   else {
     if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
-      Debug::log("Message acknowledged by client %d",client_id);
-
+            uint8_t pipe;
+      if(radio.available(&pipe)) {
+        // check for ack payload
+        char ackPayload[nRF24PayloadSize] = {0};
+        radio.read(ackPayload, sizeof(ackPayload));
+        Debug::log("Message acknowledged by client %d thru ack payload",ackPayload[0]);
+      }
+      else {
+        Debug::log("Message acknowledged by client %d, but no ack payload received",client_id);
+      }
     }
     else {
       Debug::log("Message NOT acknowledged by client %d",client_id);

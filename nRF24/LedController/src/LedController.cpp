@@ -55,6 +55,7 @@ Configuration config;
 // global RF24 object and payload buffer
 RF24          radio(PB1, PB2);           // create a global RF24 object, CE, CSN
 char          payload[nRF24PayloadSize]; // create a payload buffer
+char          ack[1];                    // create an ack buffer
 
 // global LED array for WS2812
 #ifdef LED_TYPE_WS2812
@@ -106,7 +107,9 @@ void setup() {
     #error "Unsupported F_CPU for PWM initialization"
   #endif
 
-  // wait 1s before initializing configuration
+  // wait 100ms before initializing configuration
+  delayMicroseconds(50000);
+  delayMicroseconds(50000);
   config.init();
 
   // set pin modes
@@ -132,8 +135,25 @@ void setup() {
     initializeLedStrip();
   #endif
 
-  // store client ID in 1st byte of payload
+  #ifdef LED_PATTERN_DEBUG
+  config.setLedCount(4); // use 3 LEDs for pattern debug
+    initializeLedStrip();
+
+  uint8_t pattern = 0;
+    while(true) {
+      pattern++;
+      if(pattern > 4) pattern = 0;
+      applyLedStripPattern(pattern);
+
+      for(uint16_t i=0; i<1000; i++) {
+        delayMicroseconds(1000);
+      } 
+    }
+  #endif
+
+  // store client ID in 1st byte of payload and ack buffer
   payload[0] = config.getClientId();
+  ack[0]     = config.getClientId();
   payload[2] = ':';
 
   // initialize nRF24L01
@@ -141,6 +161,7 @@ void setup() {
 
   radio.stopListening();                     // set module as transmitter
   radio.setAutoAck(1);                       // Ensure autoACK is enabled
+  radio.enableAckPayload();                  // enable payloads within ACK packets
   radio.setRetries(5,15);                    // Max delay between retries & number of retries
   radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
   radio.setPALevel(RF24_PA_HIGH);            // Set power level to high
@@ -171,7 +192,7 @@ void setup() {
   #ifdef LED_TYPE_WS2812
     // send LED count
     payload[1] = 'N';
-    itoa(config.getLedCount(), payload+3, 10);
+    utoa(config.getLedCount(), payload+3, 10);
     radio.write( payload,sizeof(payload) );
   #endif
 
@@ -232,6 +253,7 @@ void loop() {
               || ((millis() - startTime) < (uint64_t)config.getTimeout() * 1000UL))) {
     uint8_t pipe;
     if(radio.available(&pipe)) {
+      radio.writeAckPayload(pipe, ack, sizeof(ack)); // send ack payload with client ID
       char text[nRF24PayloadSize] = {0};
       radio.read(&text, sizeof(text));
 
@@ -439,7 +461,7 @@ void readAndSendBatteryVoltage(){
 #ifdef LED_TYPE_WS2812
 void   initializeLedStrip() {
     // Initialize WS2812 LED strip
-    uint8_t numLeds = 3;
+    uint8_t numLeds = config.getLedCount();
 
     for(uint8_t i=0; i<numLeds; i++) {
       ledArray[i].r = 0;

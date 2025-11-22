@@ -10,6 +10,10 @@
 #include <RF24.h>
 #include <time.h>
 
+#ifdef BSEC
+#include <bsec2.h>
+#endif
+
 
 #include "WifiInfo.h"
 #include "MqttInfo.h"
@@ -24,9 +28,10 @@
 const uint8_t PIN_CE  = 15; // D8 on D1 mini (SPI CS)
 const uint8_t PIN_CSN = 0;  // D3 on D1 mini (GPIO0)
 
-// D1 mini pins with button connected
-const uint8_t PIN_BUTTON1 = 5; // D1 on D1 mini (GPIO5)
-const uint8_t PIN_BUTTON2 = 4; // D2 on D1 mini (GPIO4)
+// pins for locally connected stuff
+const uint8_t PIN_BUTTON1 = 5;         // local button connected to I2C pins, D1 on D1 mini (GPIO5)
+const uint8_t PIN_BUTTON2 = 4;         // local button connected to I2C pins, D2 on D1 mini (GPIO4)
+const uint8_t PIN_MOTION_SENSOR = 16;  // local motion sensor pin, D0 on D1 mini (GPIO16)
 
 
 // nRF24 addresses to listen to
@@ -37,10 +42,14 @@ uint8_t nRF24Addresses[][6] = {RF24_ADDR_SEND, RF24_ADDR_RECEIVE};
 // nRF24 payload size
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
- // global WiFi, MQTT and RF24 client objects
-WiFiClient   wifiClient;
-PubSubClient mqttClient(wifiClient);
-RF24         radio(PIN_CE, PIN_CSN);  // create an RF24 object, CE, CSN
+ // global objects
+WiFiClient   wifiClient;              // WiFi client object
+PubSubClient mqttClient(wifiClient);  // MQTT client object
+RF24         radio(PIN_CE, PIN_CSN);  // RF24 object, CE, CSN
+
+#ifdef BSEC
+Bsec2        envSensor;               // BSEC2 object
+#endif
 
 // global MessageBuffer object
 MessageBuffer messageBuffer;
@@ -50,7 +59,10 @@ char buffer[256];
 
  // full MQTT client name (client ID + IP address)
 char mqttFullClientName[128];
- 
+char mqttTopicName[128];
+
+
+// function prototypes
 // MQTT callback function declaration
 void mqttCallback(const char topic[], byte* payload, unsigned int length);
 
@@ -62,6 +74,22 @@ void sendNRF24Message(uint8_t client_id, const char* message);
 
 // global flag if the controller is connected to WiFi network
 bool wifiConnected = false;
+
+#ifdef BSEC
+ /**
+ * @brief : This function checks the BSEC status, prints the respective error code. Halts in case of error
+ * @param[in] bsec  : Bsec2 class object
+ */
+void checkBsecStatus(Bsec2 bsec);
+
+/**
+ * @brief : This function is called by the BSEC library when a new output is available
+ * @param[in] input     : BME68X sensor data before processing
+ * @param[in] outputs   : Processed BSEC BSEC output data
+ * @param[in] bsec      : Instance of BSEC2 calling the callback
+ */
+void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bsec);
+#endif
 
 
 void setup() {
@@ -130,11 +158,59 @@ void setup() {
     registerMqttTopics();
   }
 
-  // setup local button pins for debug/development
-  pinMode(PIN_BUTTON1, OUTPUT);
-  digitalWrite(PIN_BUTTON1, LOW);
-  pinMode(PIN_BUTTON2, INPUT_PULLUP);
-  Serial.printf("status PIN2: %d\n", digitalRead(PIN_BUTTON2));
+  #ifdef BSEC
+    /* Desired subscription list of BSEC2 outputs */
+    bsecSensor sensorList[] = {
+            BSEC_OUTPUT_STABILIZATION_STATUS,
+            BSEC_OUTPUT_RUN_IN_STATUS,
+            BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE,
+            BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY,
+            BSEC_OUTPUT_STATIC_IAQ,
+            BSEC_OUTPUT_CO2_EQUIVALENT,
+            BSEC_OUTPUT_BREATH_VOC_EQUIVALENT,
+            BSEC_OUTPUT_COMPENSATED_GAS
+    };
+
+    /* Initialize the BME680 sensor library and interfaces */
+    Wire.begin();
+    if (!envSensor.begin(BME68X_I2C_ADDR_HIGH, Wire)) {
+      Debug::log("BME68x.begin() failed - checking status");
+      checkBsecStatus(envSensor);
+    }
+    else {
+      Debug::log("BME68x sensor initialized");
+    }
+    
+    /*
+    *	The default offset provided has been determined by testing the sensor in LP and ULP mode on application board 3.0
+    *	Please update the offset value after testing this on your product 
+    */
+    envSensor.setTemperatureOffset(TEMP_OFFSET_ULP);
+
+
+    /* Subsribe to the desired BSEC2 outputs */
+    if (!envSensor.updateSubscription(sensorList, ARRAY_LEN(sensorList), BSEC_SAMPLE_RATE_ULP)) {
+      checkBsecStatus(envSensor);
+    }
+
+    /* Whenever new data is available call the newDataCallback function */
+    envSensor.attachCallback(newDataCallback);
+
+      // trigger first BSEC run
+    if (!envSensor.run()) {
+      Debug::log("BSEC run() failed - checking status");
+      checkBsecStatus(envSensor);
+    }
+    else {
+      Debug::log("BSEC2 initialized and first run triggered");
+    }
+  #else
+    // setup local button pins for debug/development
+    pinMode(PIN_BUTTON1, OUTPUT);
+    digitalWrite(PIN_BUTTON1, LOW);
+    pinMode(PIN_BUTTON2, INPUT_PULLUP);
+    Serial.printf("status PIN2: %d\n", digitalRead(PIN_BUTTON2));
+  #endif
 
   // start nRF24 radio
   radio.begin();
@@ -145,6 +221,7 @@ void setup() {
     radio.openReadingPipe(i, nRF24Addresses[i]);
   }
 
+  
   radio.setAutoAck(1);            // Ensure autoACK is enabled
   radio.enableAckPayload();       // Allow optional ack payloads
   radio.enableDynamicAck();      // Allow dynamic ACKs
@@ -153,9 +230,6 @@ void setup() {
   radio.setPayloadSize(nRF24PayloadSize);
   radio.startListening();         // set module as receiver
 
-  Debug::enableMQTTDebug(true);
-  Debug::log("MQTT debug messages enabled");
-
   Serial.println(F("Setup done"));
 }
  
@@ -163,12 +237,13 @@ void setup() {
 
 u32_t keepAliveCounter = 0;                // use simple counter to send keepalive messages to MQTT broker roughly every half hour
 uint8_t ledStripState = 1;
+u_int8_t oldLocalMotionSensorState = 0;    // used to detect changes in local motion sensor state
 
 void loop() {
   keepAliveCounter++;
 
   // try to reconnect to WIFI if we have initially managed to connect and we are now disconnected
-  #ifdef PORTABLE
+  #ifndef PORTABLE
     if (wifiConnected) {
       while (WiFi.status() != WL_CONNECTED) {
         Serial.println("WIFI disconnected");
@@ -208,19 +283,40 @@ void loop() {
   #endif
 
 
-
   uint8_t pipe;
   while(radio.available(&pipe)) {
     char text[16] = {0};
     radio.read(&text, sizeof(text));
     // first byte is client ID
     uint8_t client_id = text[0];
+    if(client_id<10) {
     Debug::log("Payload received on address %d, client %d: %s",pipe,client_id,text+1);
 
     // MqttInfo::topicPublishClientMessage
     sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
     mqttClient.publish(buffer, text+3);
-        
+    
+    if(   text[1] == 'C' && text[3] == '1'
+       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+      // client connected
+      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorConnected);
+      mqttClient.publish(mqttTopicName, "connected");
+    }
+
+    if(   text[1] == 'V' 
+       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorBattery);
+      mqttClient.publish(mqttTopicName, text+3);
+    }
+
+    if(   text[1] == 'M' && text[3] != '0'
+       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+      // client connected
+      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorMotionDetected);
+      sprintf(buffer,"on#%c",text[3]);
+      mqttClient.publish(mqttTopicName, buffer);
+    }
+
     if(text[1] == 'L' && text[3] == '1') {
       // client is ready to receive commands
       Debug::log("Client %d is ready to receive commands",client_id);
@@ -249,12 +345,63 @@ void loop() {
         radio.startListening();                   // set module as receiver again
       } // message was sent
     } // client is listening
+  }
+  else {
+
+      // data from remote sensor 1
+
+char mqttTopicName[128];
+client_id = 2; 
+
+      if(strncmp(text,"C",1)==0 ) {
+        sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorConnected);
+        mqttClient.publish(mqttTopicName, "connected");
+      }
+
+      if(strncmp(text,"M",1)==0) {
+        if(strlen(text)>2) {
+          if(text[2]=='0') {
+            mqttClient.publish(mqttTopicName, "off");
+          }
+          else {
+            sprintf(buffer,"on#%c",text[2]);
+            mqttClient.publish(mqttTopicName, buffer);
+          }
+        }
+      }
+
+      if(strncmp(text,"V",1)==0 && strlen(text)>2) {
+        mqttClient.publish(mqttTopicName, text+2); // skip first two characters (V and colon)
+      }
+      
+      if(strncmp(text,"I",1)==0 && strlen(text)>2) {
+        mqttClient.publish(mqttTopicName, text+2); // skip first two characters (I and colon)
+      }
+    }
   } // message was received
 
+
+  // read local motion sensor level
+  #ifdef LOCAL_MOTION_SENSOR
+  int motion = digitalRead(PIN_MOTION_SENSOR);
+
+  // publish motion signal status if changed
+  if (motion != oldLocalMotionSensorState) {
+    oldLocalMotionSensorState = motion;
+    uint8_t client_id = 0;
+    char mqttTopicName[128];
+    sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorMotionDetected);
+    Debug::log("local motion sensor signal status changed: %d",motion);
+    motion==1 ? mqttClient.publish(mqttTopicName, "on") : mqttClient.publish(mqttTopicName, "off");
+  }
+  #endif
+
+
   // read local button state
+  #ifndef BSEC
   if(digitalRead(PIN_BUTTON2) == LOW) {
     // button pressed
-    Debug::log("button pressed");
+    Debug::log("local button pressed");
     sprintf(buffer,"L:%d",ledStripState);
     sendNRF24Message(255, buffer);
     ledStripState++;
@@ -263,20 +410,28 @@ void loop() {
     }
     delay(500); // debounce
   }
+  #endif
   
   if(wifiConnected) {
     // send keepalive message to MQTT broker and read local sensor roughly every 5 minutes
     if(keepAliveCounter >= 30000UL) {
       keepAliveCounter = 0;
+      Serial.println(F("5min interval reached"));
 
-      Serial.println(F("Sending ping"));
+      #ifdef BSEC
+      if (!envSensor.run()) {
+        Debug::log("BME .run() failed - checking status");
+        checkBsecStatus(envSensor);
+      }
+      #endif
+
       mqttClient.publish(MqttInfo::topicPublishIsAlive, mqttFullClientName);
     }
 
     mqttClient.loop();
   }
 
-  delay(10);
+  delay(100);
 }
 
 // register MQTT topics
@@ -369,3 +524,89 @@ void sendNRF24Message(uint8_t client_id, const char* message) {
 
   radio.startListening();                   // set module as receiver again
 }
+
+#ifdef BSEC
+void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bsec)
+{
+  if (!outputs.nOutputs) {
+    return;
+  }
+
+  // MQTT prefix for local sensor is mapped to RF24 client ID 0
+  char mqttTopicName[128];
+
+  Serial.println("BSEC outputs:\n\tTime stamp = " + String((int) (outputs.output[0].time_stamp / INT64_C(1000000))));
+  for (uint8_t i = 0; i < outputs.nOutputs; i++) {
+    const bsecData output  = outputs.output[i];
+    switch (output.sensor_id)
+    {
+      case BSEC_OUTPUT_IAQ:
+          
+          break;
+      case BSEC_OUTPUT_STABILIZATION_STATUS:
+          Serial.println("\tStabilization status = " + String(output.signal));
+          break;
+      case BSEC_OUTPUT_RUN_IN_STATUS:
+          Serial.println("\tRun in status = " + String(output.signal));
+          break;
+      case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCompensated temperature = ");Serial.println(buffer);
+          sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorTemperature);
+          mqttClient.publish(mqttTopicName, buffer);
+          break;
+      case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCompensated humidity = ");Serial.println(buffer);
+          sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorHumidity);
+          mqttClient.publish(mqttTopicName, buffer);
+          break;
+      case BSEC_OUTPUT_STATIC_IAQ:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tIAQ static = ");Serial.println(buffer);
+          sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorIaq);
+          mqttClient.publish(mqttTopicName, buffer);
+
+          sprintf(buffer,"%d", output.accuracy);
+          Serial.print("\tIAQ static accuracy = ");Serial.println(buffer);
+          sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorIaqAccuracy);
+          mqttClient.publish(mqttTopicName, buffer);
+          break;
+      case BSEC_OUTPUT_CO2_EQUIVALENT:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCO2 Equivalent = ");Serial.println(buffer);
+          sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorCo2);
+          mqttClient.publish(mqttTopicName, buffer);
+          break;
+      case BSEC_OUTPUT_BREATH_VOC_EQUIVALENT:
+          Serial.println("\tbVOC equivalent = " + String(output.signal));
+          break;
+      case BSEC_OUTPUT_COMPENSATED_GAS:
+          sprintf(buffer,"%.1f", output.signal);
+          Serial.print("\tCompensated gas = ");Serial.println(buffer);
+          sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorGasResistance);
+          mqttClient.publish(mqttTopicName, buffer);
+          break;
+      default:
+          break;
+    }
+  }
+}
+
+void checkBsecStatus(Bsec2 bsec)
+{
+  if (bsec.status < BSEC_OK) {
+    Serial.println("BSEC error code : " + String(bsec.status));
+  }
+  else if (bsec.status > BSEC_OK) {
+    Serial.println("BSEC warning code : " + String(bsec.status));
+  }
+
+  if (bsec.sensor.status < BME68X_OK) {
+    Serial.println("BME68X error code : " + String(bsec.sensor.status));
+  }
+  else if (bsec.sensor.status > BME68X_OK) {
+    Serial.println("BME68X warning code : " + String(bsec.sensor.status));
+  }
+}
+#endif

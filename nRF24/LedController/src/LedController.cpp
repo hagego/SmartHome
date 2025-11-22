@@ -11,7 +11,7 @@
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2
+ * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2 or pull-up button input as motion sensor 3
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
@@ -30,7 +30,7 @@
   #include "light_ws2812.h"
 #endif
 
-#ifdef LED_TYPE_PWM
+#ifdef NEEDS_WAKEUP
   #include "BH1750.h"
 #endif
 
@@ -67,16 +67,21 @@ char          ack[1];                    // create an ack buffer
 void   initAdc();                              // initialize ADC for battery voltage measurement
 void   readAndSendBatteryVoltage();            // measures battery voltage and sends it via nRF24
 
+#ifdef NEEDS_WAKEUP
+void   enterSleep();                           // enter sleep mode
+float  readAndSendIlluminance();               // read illuminance using BH1750 sensor and send via nRF24
+#endif
+
 #ifdef LED_TYPE_PWM
 void   initializePWM();                        // initialize PWM on PA7
 void   setPWMDutyCycle(uint8_t dutyCycle);     // set PWM duty cycle on PA7 (0-100)
-void   enterSleep();                           // enter sleep mode
-float  readAndSendIlluminance();               // read illuminance using BH1750 sensor and send via nRF24
 #endif
 
 #ifdef LED_TYPE_WS2812
 void   initializeLedStrip();                   // initialize WS2812 LED strip
 void   applyLedStripPattern(uint8_t pattern) ; // apply LED strip pattern
+void   initializeLedStripPattern();             // initialize LED strip pattern
+void   stepLedStripPattern();                   // step thru LED strip pattern
 #endif
 
 
@@ -92,7 +97,7 @@ void setup() {
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2
+ * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2 or pull-up button input as motion sensor 3
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
@@ -121,11 +126,15 @@ void setup() {
   DDRA  |=  _BV(PA6);            // pin  7: Set PA6 as output: SPI MOSI for nRF24LO1
   DDRA  &= ~_BV(PA5);            // pin  8: Set PA5 as input: SPI MISO for nRF24LO1
   DDRA  |=  _BV(PA4);            // pin  9: Set PA4 as output: SPI SCK for nRF24LO1
+  #if defined(LED_TYPE_PWM) || defined(LED_TYPE_WS2812)
   DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
+  PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver => LED off
+  #else
+  DDRA  &= ~_BV(PA3);            // pin 10: Set PA3 as input: motion sensor 3
+  PORTA |=  _BV(PA3);            // Enable pull-up resistor for motion sensor 3 pin
+  #endif
   DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
   DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
-
-  PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver => LED off
 
   #ifdef LED_TYPE_PWM
     initializePWM();                     // initialize PWM on PA7
@@ -136,15 +145,12 @@ void setup() {
   #endif
 
   #ifdef LED_PATTERN_DEBUG
-  config.setLedCount(4); // use 3 LEDs for pattern debug
-    initializeLedStrip();
+    config.setLedCount(10); // use 3 LEDs for pattern debug
+    initializeLedStripPattern();  DDRA  &= ~_BV(PA3);           // Set PIN_MOTION3 as input with pull-up
 
-  uint8_t pattern = 0;
     while(true) {
-      pattern++;
-      if(pattern > 4) pattern = 0;
-      applyLedStripPattern(pattern);
-
+      stepLedStripPattern();
+      
       for(uint16_t i=0; i<1000; i++) {
         delayMicroseconds(1000);
       } 
@@ -201,9 +207,12 @@ void setup() {
 
 
 void loop() {
-  #ifdef LED_TYPE_PWM
+  #ifdef NEEDS_WAKEUP
     radio.powerDown();                         // Power down the radio immediately after sending
-    PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
+
+    #ifdef LED_TYPE_PWM
+      PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
+    #endif
 
     // go to sleep until motion is detected
     enterSleep();
@@ -215,20 +224,39 @@ void loop() {
     // measure illuminance
     float illuminance = readAndSendIlluminance();
 
-    if(illuminance <= config.getIlluminanceThreshold()) {
-      // ambient light is insufficient, turn on LED
-      setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
-      PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
-    }
+    #ifdef LED_TYPE_PWM
+      if(illuminance <= config.getIlluminanceThreshold()) {
+        // ambient light is insufficient, turn on LED
+        setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
+        PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
+      }
+    #endif
 
     // send motion detected message
     payload[1] = 'M';
-    payload[3] = '1';
+    payload[3] = '0';
     payload[4] = 0;
+
+    if((PINB & _BV(PB0)) == _BV(PB0)) {
+      payload[3] = '1';
+    }
+    if((PINB & _BV(PB3)) == _BV(PB3)) {
+      payload[3] = '2';
+    }
+    // check if PA3 is low
+    if((PINA & _BV(PA3)) == 0) {
+      payload[3] = '3';
+    }
+
     radio.write( payload,sizeof(payload) );
 
     // measure battery voltage and send
     readAndSendBatteryVoltage();   // read voltage
+
+    // wait 500ms for debounce
+    for(uint16_t i=0; i<500; i++) {
+      delayMicroseconds(1000);
+    }
   #endif
   
 
@@ -283,6 +311,14 @@ void loop() {
         }
       }
       
+      // command to set timeout value: "T:<value>" where <value> is in seconds
+      if(text[1]=='T' && strlen(text+1)>2) {
+        int timeout = atoi(text + 3);
+        if(timeout >= 0 && timeout <= 3600) { // max 1 hour
+          config.setTimeout((uint16_t)timeout);
+        }
+      }
+
       #ifdef LED_TYPE_PWM
       // command to set PWM value: "P:<value>" where <value> is 0-100
       if(text[1]=='P' && strlen(text+1)>2) {
@@ -290,14 +326,6 @@ void loop() {
         if(pwmValue >= 0 && pwmValue <= 100) {
           config.setPwmValue((uint8_t)pwmValue);
           setPWMDutyCycle((uint8_t)pwmValue);
-        }
-      }
-
-      // command to set timeout value: "T:<value>" where <value> is in seconds
-      if(text[1]=='T' && strlen(text+1)>2) {
-        int timeout = atoi(text + 3);
-        if(timeout > 0 && timeout <= 3600) { // max 1 hour
-          config.setTimeout((uint16_t)timeout);
         }
       }
 
@@ -346,11 +374,29 @@ void loop() {
         radio.startListening();   
       #endif
     }
-    #ifndef MULTI_CLIENT
-      else {
-        delayMicroseconds(10000); // small delay to avoid busy loop
+
+    #if !defined(LED_TYPE_PWM) && !defined(LED_TYPE_WS2812)
+    #  // check for pull-up button input as motion sensor 3
+      if((PINA & _BV(PA3)) == 0) {
+        payload[1] = 'M';
+        payload[3] = '3';
+        payload[4] = 0;
+
+        radio.stopListening();          // set module as transmitter
+        radio.write( payload,sizeof(payload) );
+        radio.txStandBy();
+        radio.openReadingPipe(1, nRF24Addresses[1]);
+        radio.startListening();   
+
+        // wait 500ms for debounce
+        for(uint16_t i=0; i<500; i++) {
+          delayMicroseconds(1000);
+        }
       }
+
     #endif
+
+    delayMicroseconds(10000);
   }
   radio.stopListening();          // set module as transmitter
 
@@ -459,16 +505,20 @@ void readAndSendBatteryVoltage(){
 
 
 #ifdef LED_TYPE_WS2812
-void   initializeLedStrip() {
-    // Initialize WS2812 LED strip
-    uint8_t numLeds = config.getLedCount();
+void initializeLedStrip() {
+  // Initialize WS2812 LED strip
+  uint8_t numLeds = config.getLedCount();
 
-    for(uint8_t i=0; i<numLeds; i++) {
-      ledArray[i].r = 0;
-      ledArray[i].g = 0;
-      ledArray[i].b = 0;
-    }
-    ws2812_setleds(ledArray, numLeds);
+  for(uint8_t i=0; i<numLeds; i++) {
+    ledArray[i].r = 0;
+    ledArray[i].g = 0;
+    ledArray[i].b = 0;
+  }
+  #ifdef TRIGGERED
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
+  #else
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+  #endif
 }
 
 void applyLedStripPattern(uint8_t pattern) {
@@ -500,13 +550,61 @@ void applyLedStripPattern(uint8_t pattern) {
         ledArray[i].g = g;
         ledArray[i].b = b;
       }
-      //ws2812_setleds(ledArray, numLeds);
       #ifdef TRIGGERED
       ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
       #else
       ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
       #endif
 }
+
+
+void initializeLedStripPattern() {
+  uint8_t numLeds = config.getLedCount();
+
+  for(uint8_t i=0; i<numLeds; i++) {
+    switch(i % 3) {
+      case 0:
+        ledArray[i].r = 255;
+        ledArray[i].g = 0;
+        ledArray[i].b = 0;
+        break;
+      case 1:
+        ledArray[i].r = 0;
+        ledArray[i].g = 255;
+        ledArray[i].b = 0;
+        break;
+      case 2:
+        ledArray[i].r = 0;
+        ledArray[i].g = 0;
+        ledArray[i].b = 255;
+        break;
+    }
+  }
+
+  #ifdef TRIGGERED
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
+  #else
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+  #endif
+}
+
+void stepLedStripPattern() {
+  uint8_t numLeds = config.getLedCount();
+
+  // shift array content to the right by one position
+  struct cRGB lastLed = ledArray[numLeds - 1];
+  for(uint8_t i = numLeds - 1; i > 0; i--) {
+    ledArray[i] = ledArray[i - 1];
+  }
+  ledArray[0] = lastLed;
+
+  #ifdef TRIGGERED
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
+  #else
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+  #endif
+}
+
 #endif
 
 #ifdef LED_TYPE_PWM
@@ -535,6 +633,9 @@ void setPWMDutyCycle(uint8_t dutyCycle) {
   // Calculate the compare value based on duty cycle
   OCR0B = (uint8_t)(((double)dutyCycle/100.0)*255.0);;
 }
+#endif
+
+#ifdef NEEDS_WAKEUP
 
 /**
  * read illuminance using BH1750 sensor via direct I2C communication

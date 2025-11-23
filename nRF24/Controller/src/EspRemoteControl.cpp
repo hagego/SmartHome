@@ -156,6 +156,10 @@ void setup() {
 
     // subscribe to topics
     registerMqttTopics();
+
+    delay(100);
+    mqttClient.loop();
+    delay(100);
   }
 
   #ifdef BSEC
@@ -289,7 +293,6 @@ void loop() {
     radio.read(&text, sizeof(text));
     // first byte is client ID
     uint8_t client_id = text[0];
-    if(client_id<10) {
     Debug::log("Payload received on address %d, client %d: %s",pipe,client_id,text+1);
 
     // MqttInfo::topicPublishClientMessage
@@ -306,6 +309,12 @@ void loop() {
     if(   text[1] == 'V' 
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
       sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorBattery);
+      mqttClient.publish(mqttTopicName, text+3);
+    }
+
+    if(   text[1] == 'I' 
+       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorIlluminance);
       mqttClient.publish(mqttTopicName, text+3);
     }
 
@@ -345,39 +354,7 @@ void loop() {
         radio.startListening();                   // set module as receiver again
       } // message was sent
     } // client is listening
-  }
-  else {
-
-      // data from remote sensor 1
-
-char mqttTopicName[128];
-client_id = 2; 
-
-      if(strncmp(text,"C",1)==0 ) {
-        sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorConnected);
-        mqttClient.publish(mqttTopicName, "connected");
-      }
-
-      if(strncmp(text,"M",1)==0) {
-        if(strlen(text)>2) {
-          if(text[2]=='0') {
-            mqttClient.publish(mqttTopicName, "off");
-          }
-          else {
-            sprintf(buffer,"on#%c",text[2]);
-            mqttClient.publish(mqttTopicName, buffer);
-          }
-        }
-      }
-
-      if(strncmp(text,"V",1)==0 && strlen(text)>2) {
-        mqttClient.publish(mqttTopicName, text+2); // skip first two characters (V and colon)
-      }
-      
-      if(strncmp(text,"I",1)==0 && strlen(text)>2) {
-        mqttClient.publish(mqttTopicName, text+2); // skip first two characters (I and colon)
-      }
-    }
+  
   } // message was received
 
 
@@ -414,9 +391,9 @@ client_id = 2;
   
   if(wifiConnected) {
     // send keepalive message to MQTT broker and read local sensor roughly every 5 minutes
-    if(keepAliveCounter >= 30000UL) {
+    if(keepAliveCounter >= 3000UL) {
       keepAliveCounter = 0;
-      Serial.println(F("5min interval reached"));
+      Debug::log("5min interval reached");
 
       #ifdef BSEC
       if (!envSensor.run()) {
@@ -427,7 +404,6 @@ client_id = 2;
 
       mqttClient.publish(MqttInfo::topicPublishIsAlive, mqttFullClientName);
     }
-
     mqttClient.loop();
   }
 

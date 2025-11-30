@@ -78,9 +78,7 @@ void   setPWMDutyCycle(uint8_t dutyCycle);     // set PWM duty cycle on PA7 (0-1
 #endif
 
 #ifdef LED_TYPE_WS2812
-void   initializeLedStrip();                   // initialize WS2812 LED strip
-void   applyLedStripPattern(uint8_t pattern) ; // apply LED strip pattern
-void   initializeLedStripPattern();             // initialize LED strip pattern
+void   initializeLedStripPattern(bool enablePattern);             // initialize LED strip pattern
 void   stepLedStripPattern();                   // step thru LED strip pattern
 #endif
 
@@ -141,12 +139,12 @@ void setup() {
   #endif
 
   #ifdef LED_TYPE_WS2812
-    initializeLedStrip();
+    initializeLedStripPattern(false);
   #endif
 
   #ifdef LED_PATTERN_DEBUG
     config.setLedCount(10); // use 3 LEDs for pattern debug
-    initializeLedStripPattern();  DDRA  &= ~_BV(PA3);           // Set PIN_MOTION3 as input with pull-up
+    initializeLedStripPattern(false);
 
     while(true) {
       stepLedStripPattern();
@@ -205,7 +203,7 @@ void setup() {
   radio.txStandBy();                         // Wait for the transmission to complete
 }
 
-
+bool ledStripPatternEnabled = false;
 void loop() {
   #ifdef NEEDS_WAKEUP
     radio.powerDown();                         // Power down the radio immediately after sending
@@ -340,12 +338,14 @@ void loop() {
 
       #ifdef LED_TYPE_WS2812
       // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
-      if(text[1]=='L' && strlen(text+1)>2) {
-        // for PWM, pattern codes are not supported
-        int patternCode = atoi(text + 3);
-        if(patternCode >= 0 && patternCode <= 255) {
-          // apply pattern
-          applyLedStripPattern((uint8_t)patternCode);
+      if(text[1]=='L') {
+        if(!ledStripPatternEnabled) {
+          // initialize LED strip if not already done
+          initializeLedStripPattern(true);
+          ledStripPatternEnabled = true;
+        }
+        else {
+          stepLedStripPattern();
         }
       }
 
@@ -505,79 +505,27 @@ void readAndSendBatteryVoltage(){
 
 
 #ifdef LED_TYPE_WS2812
-void initializeLedStrip() {
-  // Initialize WS2812 LED strip
+
+void initializeLedStripPattern(bool enablePattern) {
   uint8_t numLeds = config.getLedCount();
 
   for(uint8_t i=0; i<numLeds; i++) {
     ledArray[i].r = 0;
     ledArray[i].g = 0;
     ledArray[i].b = 0;
-  }
-  #ifdef TRIGGERED
-    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
-  #else
-    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
-  #endif
-}
 
-void applyLedStripPattern(uint8_t pattern) {
-      uint8_t numLeds = config.getLedCount();
-      uint8_t r = 0;
-      uint8_t g = 0;
-      uint8_t b = 0;
-
-      switch(pattern) {
-        case 1: // red
-          r = 255; g = 0; b = 0;
+    if (enablePattern) {
+      switch(i % 3) {
+        case 0:
+          ledArray[i].r = 255;
           break;
-        case 2: // green
-          r = 0; g = 255; b = 0;
+        case 1:
+          ledArray[i].g = 255;
           break;
-        case 3: // blue
-          r = 0; g = 0; b = 255;
-          break;
-        case 4: // white
-          r = 255; g = 255; b = 255;
-          break;
-        default: // off
-          r = 0; g = 0; b = 0;
+        case 2:
+          ledArray[i].b = 255;
           break;
       }
-
-      for(uint8_t i=0; i<numLeds; i++) {
-        ledArray[i].r = r;
-        ledArray[i].g = g;
-        ledArray[i].b = b;
-      }
-      #ifdef TRIGGERED
-      ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
-      #else
-      ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
-      #endif
-}
-
-
-void initializeLedStripPattern() {
-  uint8_t numLeds = config.getLedCount();
-
-  for(uint8_t i=0; i<numLeds; i++) {
-    switch(i % 3) {
-      case 0:
-        ledArray[i].r = 255;
-        ledArray[i].g = 0;
-        ledArray[i].b = 0;
-        break;
-      case 1:
-        ledArray[i].r = 0;
-        ledArray[i].g = 255;
-        ledArray[i].b = 0;
-        break;
-      case 2:
-        ledArray[i].r = 0;
-        ledArray[i].g = 0;
-        ledArray[i].b = 255;
-        break;
     }
   }
 

@@ -21,6 +21,7 @@
 
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
+#include <avr/power.h>
 
 #include <SPI.h>
 #include <nRF24L01.h>
@@ -212,7 +213,9 @@ void setup() {
 bool ledStripPatternEnabled = false;
 void loop() {
   #ifdef NEEDS_WAKEUP
-    radio.powerDown();                         // Power down the radio immediately after sending
+    if(!justStarted) {
+      radio.powerDown();                         // Power down the radio immediately after sending
+    }
 
     #ifdef LED_TYPE_PWM
       PORTA &= ~_BV(PA3);                        // Set PA3 low: disables DCDC for LED driver => LED off
@@ -222,10 +225,10 @@ void loop() {
     // skips sleep on first run after power-up
     if(!justStarted) {
       enterSleep();
+      // power up radio
+      radio.powerUp();
     }
 
-    // power up radio
-    radio.powerUp();
     radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
 
     // measure illuminance
@@ -310,6 +313,12 @@ void loop() {
       }
 
       if(strlen(text+1)>2) {
+        // command to set nRF24 send pipe address byte: "A:<value>" where <value> is a single character
+        if(text[1]=='A') {
+          config.setAddressByte((uint8_t)text[3]);
+          nRF24Addresses[0][0] = (uint8_t)config.getAddressByte();
+        }
+
         // ensure command has a valid parameter
         int parameter = atoi(text + 3);
         if(parameter>=0) {
@@ -326,12 +335,6 @@ void loop() {
           // command to set timeout value: "T:<value>" where <value> is in seconds
           if(text[1]=='T' ) {
             config.setTimeout((uint16_t)parameter);
-          }
-
-          // command to set nRF24 send pipe address byte: "A:<value>" where <value> is a single character
-          if(text[1]=='A') {
-            config.setAddressByte((uint8_t)parameter);
-            nRF24Addresses[0][0] = (uint8_t)config.getAddressByte();
           }
 
           #ifdef LED_TYPE_PWM
@@ -506,12 +509,14 @@ void initAdc() {
  * measure battery voltage on ADC and transmit it via nRF24
  */
 void readAndSendBatteryVoltage(){
-  ADCSRA |= _BV(ADEN);									  // enable ADC
-	delayMicroseconds(10000);	             // settle
+  power_adc_enable();                     // enable ADC
+  ADCSRA |= _BV(ADEN);									  // enable ADC clock
+	delayMicroseconds(10000);	              // settle
   ADCSRA |= _BV(ADSC);                    // start a conversion
   while (ADCSRA & (1<<ADSC)){}
   uint16_t reading = (ADCL | (ADCH<<8));	// it's important to read ADCL before ADCH
-	ADCSRA &= ~_BV(ADEN);									  // disable ADC again
+	ADCSRA &= ~_BV(ADEN);									  // disable ADC clock again
+  power_adc_disable();                    // disable ADC to save power
 
   double voltage = (double)reading * VREF * (R_VCC + R_GND) / (R_GND * 1024.0); // calculate voltage
 

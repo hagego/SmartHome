@@ -83,6 +83,7 @@ void   stepLedStripPattern();                   // step thru LED strip pattern
 #endif
 
 
+boolean justStarted = true;
 void setup() {
 
   /**
@@ -110,9 +111,12 @@ void setup() {
     #error "Unsupported F_CPU for PWM initialization"
   #endif
 
-  // wait 100ms before initializing configuration
-  delayMicroseconds(50000);
-  delayMicroseconds(50000);
+  // wait 500ms before initializing configuration
+  for(uint8_t i=0; i<10; i++)
+  {
+    delayMicroseconds(50000);
+  } 
+  // initialize configuration
   config.init();
 
   // set pin modes
@@ -159,6 +163,8 @@ void setup() {
   payload[0] = config.getClientId();
   ack[0]     = config.getClientId();
   payload[2] = ':';
+
+  nRF24Addresses[0][0] = (uint8_t)config.getAddressByte();
 
   // initialize nRF24L01
   radio.begin();
@@ -213,7 +219,10 @@ void loop() {
     #endif
 
     // go to sleep until motion is detected
-    enterSleep();
+    // skips sleep on first run after power-up
+    if(!justStarted) {
+      enterSleep();
+    }
 
     // power up radio
     radio.powerUp();
@@ -256,6 +265,7 @@ void loop() {
       delayMicroseconds(1000);
     }
   #endif
+  justStarted = false;
   
 
   // send ready to listen message
@@ -299,42 +309,51 @@ void loop() {
         exitCondition = true;
       }
 
-      // command to set new client ID: "X:<value>" where <value> is 0-255
-      if(text[1]=='X' && strlen(text+1)>2 && (targetClientId==config.getClientId() || config.getClientId()==255)) {
-        int clientId = atoi(text + 3);
-        if(clientId > 0 && clientId <= 255) {
-          // set new client ID and update payload
-          config.setClientId((uint8_t)clientId);
-          payload[0] = config.getClientId();
-        }
-      }
-      
-      // command to set timeout value: "T:<value>" where <value> is in seconds
-      if(text[1]=='T' && strlen(text+1)>2) {
-        int timeout = atoi(text + 3);
-        if(timeout >= 0 && timeout <= 3600) { // max 1 hour
-          config.setTimeout((uint16_t)timeout);
-        }
-      }
+      if(strlen(text+1)>2) {
+        // ensure command has a valid parameter
+        int parameter = atoi(text + 3);
+        if(parameter>=0) {
+          // command to set new client ID: "X:<value>" where <value> is 0-255
+          if(text[1]=='X' && (targetClientId==config.getClientId() || config.getClientId()==255)) {
+            int clientId = parameter;
+            if(clientId > 0 && clientId <= 255) {
+              // set new client ID and update payload
+              config.setClientId((uint8_t)clientId);
+              payload[0] = config.getClientId();
+            }
+          }
+          
+          // command to set timeout value: "T:<value>" where <value> is in seconds
+          if(text[1]=='T' ) {
+            config.setTimeout((uint16_t)parameter);
+          }
 
-      #ifdef LED_TYPE_PWM
-      // command to set PWM value: "P:<value>" where <value> is 0-100
-      if(text[1]=='P' && strlen(text+1)>2) {
-        int pwmValue = atoi(text + 3);
-        if(pwmValue >= 0 && pwmValue <= 100) {
-          config.setPwmValue((uint8_t)pwmValue);
-          setPWMDutyCycle((uint8_t)pwmValue);
-        }
-      }
+          // command to set nRF24 send pipe address byte: "A:<value>" where <value> is a single character
+          if(text[1]=='A') {
+            config.setAddressByte((uint8_t)parameter);
+            nRF24Addresses[0][0] = (uint8_t)config.getAddressByte();
+          }
 
-      // command to set illuminance threshold: "I:<value>" where <value> is in lux
-      if(text[1]=='I' && strlen(text+1)>2) {
-        int threshold = atoi(text + 3);
-        if(threshold >= 0 && threshold <= 255) {
-          config.setIlluminanceThreshold((uint8_t)threshold);
+          #ifdef LED_TYPE_PWM
+          // command to set PWM value: "P:<value>" where <value> is 0-100
+          if(text[1]=='P') {
+            int pwmValue = parameter;
+            if(pwmValue <= 100) {
+              config.setPwmValue((uint8_t)pwmValue);
+              setPWMDutyCycle((uint8_t)pwmValue);
+            }
+          }
+
+          // command to set illuminance threshold: "I:<value>" where <value> is in lux
+          if(text[1]=='I') {
+            int threshold = parameter;
+            if(threshold <= 255) {
+              config.setIlluminanceThreshold((uint8_t)threshold);
+            }
+          }
+          #endif
         }
       }
-      #endif
 
       #ifdef LED_TYPE_WS2812
       // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code

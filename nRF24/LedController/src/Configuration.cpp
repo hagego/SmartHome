@@ -22,6 +22,7 @@ void Configuration::init()
         pwmValue = 10;              // default PWM value 100%
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
+        addressByte = 'p';          // default address byte 0
 
         // write defaults to EEPROM
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
@@ -30,6 +31,7 @@ void Configuration::init()
         writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
         writeByteToEEPROM(ADDRESS_ILLUMINANCE, illuminanceThreshold);
         writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
+        writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
     } else {
         // read values from EEPROM
         clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
@@ -37,6 +39,13 @@ void Configuration::init()
         pwmValue             = readByteFromEEPROM(ADDRESS_PWM_VALUE);
         illuminanceThreshold = readByteFromEEPROM(ADDRESS_ILLUMINANCE);
         ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
+        addressByte          = readByteFromEEPROM(ADDRESS_ADDRESS_BYTE);
+
+        if(addressByte != 'e' && addressByte != 'o' && addressByte != 'p' ) {
+          // invalid address byte, reset to default
+          addressByte = 'p';
+          writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
+        }
     }
 }
 
@@ -89,6 +98,16 @@ void Configuration::setLedCount(uint8_t ledCount)
 {
     this->ledCount = ledCount;
     writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
+}
+
+uint8_t Configuration::getAddressByte()
+{
+    return addressByte;
+}
+void Configuration::setAddressByte(uint8_t addressByte)
+{
+    this->addressByte = addressByte;
+    writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
 }
 
 

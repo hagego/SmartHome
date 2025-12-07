@@ -331,7 +331,7 @@ void loop() {
       Debug::log("Client %d is ready to receive commands",client_id);
 
       MessageBuffer::Message message;
-      if(messageBuffer.getMessage(client_id, &message)) {
+      if(client_id!=0 && messageBuffer.getMessage(client_id, &message)) {
         radio.stopListening();          // set module as transmitter
         radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
 

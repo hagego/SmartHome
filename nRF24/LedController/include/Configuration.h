@@ -35,6 +35,10 @@ class Configuration {
     uint8_t getLedCount();
     void setLedCount(uint8_t ledCount);
 
+    // gets/sets nRF24 send pipe address byte
+    uint8_t getAddressByte();
+    void    setAddressByte(uint8_t addressByte);
+
   private:
   
     // data members
@@ -43,6 +47,7 @@ class Configuration {
     uint8_t  pwmValue;
     uint8_t  illuminanceThreshold;
     uint8_t  ledCount;
+    uint8_t  addressByte;
 
     // addresses
     static const uint8_t ADDRESS_IS_INITIALIZED = 0;  // stores a magic number if initialized
@@ -51,6 +56,7 @@ class Configuration {
     static const uint8_t ADDRESS_PWM_VALUE      = 4;  // PWM value in percent (1 byte)
     static const uint8_t ADDRESS_ILLUMINANCE    = 5;  // illuminance threshold in lux (1 byte)
     static const uint8_t ADDRESS_LED_COUNT      = 6;  // WS2812 LED count (1 byte)
+    static const uint8_t ADDRESS_ADDRESS_BYTE   = 7;  // 1st byte of nRF24 send pipe (pipe 0) (1 byte)
 
     // magic number to check if EEPROM has been initialized with default data
     static const uint8_t MAGIC_NUMBER           = 42;

@@ -22,6 +22,7 @@
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
 #include <avr/power.h>
+#include <avr/wdt.h>
 
 #include <SPI.h>
 #include <nRF24L01.h>
@@ -31,8 +32,12 @@
   #include "light_ws2812.h"
 #endif
 
-#ifdef NEEDS_WAKEUP
+#ifdef ILLUMINANCE_SENSOR
   #include "BH1750.h"
+#endif
+
+#ifdef ENV_SENSOR
+  #include "BME280I2C.h"
 #endif
 
 #include "Configuration.h"
@@ -46,7 +51,7 @@ const double VREF  = 1.1;       // internal reference voltage
 
 // nRF24 addresses to use (channel) (5 bytes)
 // address 0 is used for writing, address 1 for reading
-uint8_t nRF24Addresses[][6] = {RF24_ADDR_SEND, RF24_ADDR_RECEIVE}; 
+uint8_t nRF24Addresses[][6] = {"pclnt", "ctrl "}; 
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
 
@@ -70,6 +75,9 @@ void   readAndSendBatteryVoltage();            // measures battery voltage and s
 
 #ifdef NEEDS_WAKEUP
 void   enterSleep();                           // enter sleep mode
+#endif
+
+#ifdef ILLUMINANCE_SENSOR
 float  readAndSendIlluminance();               // read illuminance using BH1750 sensor and send via nRF24
 #endif
 
@@ -81,6 +89,10 @@ void   setPWMDutyCycle(uint8_t dutyCycle);     // set PWM duty cycle on PA7 (0-1
 #ifdef LED_TYPE_WS2812
 void   initializeLedStripPattern(bool enablePattern);             // initialize LED strip pattern
 void   stepLedStripPattern();                   // step thru LED strip pattern
+#endif
+
+#ifdef ENV_SENSOR
+void readAndSendEnvironmentalData();
 #endif
 
 
@@ -187,7 +199,7 @@ void setup() {
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
 
-  // send timeout
+  // send timeout setting
   payload[1] = 'T';
   itoa(config.getTimeout(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
@@ -198,6 +210,22 @@ void setup() {
   // measure illuminance and send
   #ifdef LED_TYPE_PWM
     readAndSendIlluminance();
+  #endif
+
+  #ifdef ENV_SENSOR
+    // enable the WD interrupt (note no reset)
+    wdt_reset();     // Reset the WDT timer
+    cli();           // disable interrupts
+    
+    /* Clear WDRF in MCUSR */
+    MCUSR &= ~(1 << WDRF); // Clear WDRF
+    /* Write logical one to WDCE and WDE */
+    WDTCSR |= (1<<WDCE) | (1<<WDE);
+    /* Set new prescaler(time-out) value = 8s and enable */
+    WDTCSR |= _BV(WDE) |_BV(WDIE) | _BV(WDP0) | _BV(WDP3);
+    sei();
+
+    readAndSendEnvironmentalData();
   #endif
 
   #ifdef LED_TYPE_WS2812
@@ -225,12 +253,14 @@ void loop() {
     // skips sleep on first run after power-up
     if(!justStarted) {
       enterSleep();
-      // power up radio
+
+      // power up radio after waking up
       radio.powerUp();
     }
 
     radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
 
+    #ifdef ILLUMINANCE_SENSOR
     // measure illuminance
     float illuminance = readAndSendIlluminance();
 
@@ -240,6 +270,7 @@ void loop() {
         setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
         PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
       }
+    #endif
     #endif
 
     // send motion detected message
@@ -268,8 +299,8 @@ void loop() {
       delayMicroseconds(1000);
     }
   #endif
+
   justStarted = false;
-  
 
   // send ready to listen message
   payload[1] = 'L';
@@ -379,26 +410,11 @@ void loop() {
         }
       }
       #endif
+    } // if(radio.available(&pipe))
 
-      #ifndef MULTI_CLIENT
-        // send ready to receive the next command
-        radio.stopListening();          // set module as transmitter
 
-        payload[1] = 'L';
-        payload[3] = '1';
-        payload[4] = 0;
-        radio.write( payload,sizeof(payload) );
-        radio.txStandBy();              // Wait for the transmission to complete
-        delayMicroseconds(10000);
-
-        // Now set the module as receiver and wait for commands
-        radio.openReadingPipe(1, nRF24Addresses[1]);
-        radio.startListening();   
-      #endif
-    }
-
-    #if !defined(LED_TYPE_PWM) && !defined(LED_TYPE_WS2812)
-    #  // check for pull-up button input as motion sensor 3
+    #ifdef BUTTON
+      // check for pull-up button input as motion sensor 3
       if((PINA & _BV(PA3)) == 0) {
         payload[1] = 'M';
         payload[3] = '3';
@@ -419,15 +435,16 @@ void loop() {
     #endif
 
     delayMicroseconds(10000);
-  }
+  } // while loop
+
   radio.stopListening();          // set module as transmitter
 
   payload[1] = 'L';
   payload[3] = '0';
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
-
   radio.txStandBy();              // Wait for the transmission to complete
+
   delayMicroseconds(10000);
 }
 
@@ -439,7 +456,8 @@ void enterSleep() {
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
   GIMSK  |= _BV(PCIE0);                  // Enable Pin Change Interrupts
  
-  PCMSK1 |= _BV(PCINT8);                 // Enable pin change interrupt on PIN_MOTION1
+  PCMSK0 |= _BV(PCINT3);                 // Enable pin change interrupt on PA3
+  PCMSK1 |= _BV(PCINT8) | _BV(PCINT11);  // Enable pin change interrupt on PB0 and PB3
 
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
   sleep_enable();                        // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
@@ -452,7 +470,9 @@ void enterSleep() {
   GIMSK  &= ~_BV(PCIE1);                 // Disable Pin Change Interrupts
   GIMSK  &= ~_BV(PCIE0);                 // Disable Pin Change Interrupts
 
+  PCMSK0 &= ~_BV(PCINT3); 
   PCMSK1 &= ~_BV(PCINT8); 
+  PCMSK1 &= ~_BV(PCINT11); 
 
   sleep_disable();                       // Disable sleep mode
 }
@@ -461,6 +481,9 @@ void enterSleep() {
 ISR (PCINT0_vect) {  
 }
 ISR (PCINT1_vect) {  
+}
+ISR (WDT_vect) {
+  WDTCSR |= _BV(WDIE); // re-enable WDT interrupt
 }
 
 // ISR for bad interrupt
@@ -521,11 +544,10 @@ void readAndSendBatteryVoltage(){
   double voltage = (double)reading * VREF * (R_VCC + R_GND) / (R_GND * 1024.0); // calculate voltage
 
   payload[1] = 'V';
-  dtostrf(voltage, 4, 2, payload+3);   // convert voltage to string
+  // footprint of dtostrf is too large for ATtiny84. Use utoa and mV instead
+  utoa((uint16_t)(voltage * 1000.0), payload+3, 10);
   radio.write( payload,sizeof(payload) );  // Send data
 }
-
-
 
 
 #ifdef LED_TYPE_WS2812
@@ -553,7 +575,7 @@ void initializeLedStripPattern(bool enablePattern) {
     }
   }
 
-  #ifdef TRIGGERED
+  #ifdef NEEDS_WAKEUP
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
   #else
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
@@ -570,7 +592,7 @@ void stepLedStripPattern() {
   }
   ledArray[0] = lastLed;
 
-  #ifdef TRIGGERED
+  #ifdef NEEDS_WAKEUP
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
   #else
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
@@ -607,8 +629,8 @@ void setPWMDutyCycle(uint8_t dutyCycle) {
 }
 #endif
 
-#ifdef NEEDS_WAKEUP
 
+#ifdef ILLUMINANCE_SENSOR
 /**
  * read illuminance using BH1750 sensor via direct I2C communication
  * @return illuminance in lux
@@ -629,9 +651,22 @@ float readAndSendIlluminance() {
   }
 
   payload[1] = 'I';
-  dtostrf(lux, 1, 0, payload+3);   // convert lux to string
+  utoa((uint16_t)(lux), payload+3, 10);
   radio.write( payload,sizeof(payload) );  // Send data
 
   return lux;
 }
 #endif
+
+#ifdef ENV_SENSOR
+void readAndSendEnvironmentalData() {
+  BME280I2C bme;
+
+  if(bme.begin()) {
+    payload[1] = 'D';
+    utoa((int16_t)(bme.temp()), payload+3, 10); 
+    radio.write( payload,sizeof(payload) );  // Send data
+  }
+}
+#endif
+

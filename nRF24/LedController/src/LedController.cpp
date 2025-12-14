@@ -73,7 +73,7 @@ char          ack[1];                    // create an ack buffer
 void   initAdc();                              // initialize ADC for battery voltage measurement
 void   readAndSendBatteryVoltage();            // measures battery voltage and sends it via nRF24
 
-#ifdef NEEDS_WAKEUP
+#ifdef ENABLE_SLEEP
 void   enterSleep();                           // enter sleep mode
 #endif
 
@@ -204,13 +204,15 @@ void setup() {
   itoa(config.getTimeout(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
 
+  #ifdef ENV_SENSOR
+    // send sleep period setting
+    payload[1] = 'S';
+    utoa(config.getSleepPeriod(), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+  #endif
+
   // measure battery voltage and send
   readAndSendBatteryVoltage();
-
-  // measure illuminance and send
-  #ifdef LED_TYPE_PWM
-    readAndSendIlluminance();
-  #endif
 
   #ifdef ENV_SENSOR
     // enable the WD interrupt (note no reset)
@@ -240,7 +242,7 @@ void setup() {
 
 bool ledStripPatternEnabled = false;
 void loop() {
-  #ifdef NEEDS_WAKEUP
+  #ifdef ENABLE_SLEEP
     if(!justStarted) {
       radio.powerDown();                         // Power down the radio immediately after sending
     }
@@ -252,7 +254,15 @@ void loop() {
     // go to sleep until motion is detected
     // skips sleep on first run after power-up
     if(!justStarted) {
-      enterSleep();
+
+      #ifdef ENV_SENSOR
+        uint16_t sleepCount = config.getSleepPeriod() / 8;
+        for(uint16_t i=0; i<sleepCount; i++) {
+          enterSleep();
+        }
+      #else
+        enterSleep();
+      #endif
 
       // power up radio after waking up
       radio.powerUp();
@@ -271,6 +281,11 @@ void loop() {
         PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
       }
     #endif
+    #endif
+
+    #ifdef ENV_SENSOR
+      // measure environmental data
+      readAndSendEnvironmentalData();
     #endif
 
     // send motion detected message
@@ -298,7 +313,7 @@ void loop() {
     for(uint16_t i=0; i<500; i++) {
       delayMicroseconds(1000);
     }
-  #endif
+  #endif // ENABLE_SLEEP
 
   justStarted = false;
 
@@ -368,6 +383,13 @@ void loop() {
             config.setTimeout((uint16_t)parameter);
           }
 
+          #ifdef ENV_SENSOR
+          // command to set sleep period value: "S:<value>" where <value> is in seconds
+          if(text[1]=='S' ) {
+            config.setSleepPeriod((uint16_t)parameter);
+          }
+          #endif
+
           #ifdef LED_TYPE_PWM
           // command to set PWM value: "P:<value>" where <value> is 0-100
           if(text[1]=='P') {
@@ -390,25 +412,25 @@ void loop() {
       }
 
       #ifdef LED_TYPE_WS2812
-      // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
-      if(text[1]=='L') {
-        if(!ledStripPatternEnabled) {
-          // initialize LED strip if not already done
-          initializeLedStripPattern(true);
-          ledStripPatternEnabled = true;
+        // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
+        if(text[1]=='L') {
+          if(!ledStripPatternEnabled) {
+            // initialize LED strip if not already done
+            initializeLedStripPattern(true);
+            ledStripPatternEnabled = true;
+          }
+          else {
+            stepLedStripPattern();
+          }
         }
-        else {
-          stepLedStripPattern();
-        }
-      }
 
-      // command to set LED count: "N:<value>" where <value> is number of LEDs
-      if(text[1]=='N' && strlen(text+1)>2) {
-        int ledCount = atoi(text + 3);
-        if(ledCount >= 0 && ledCount <= MAX_NUM_LEDS) {
-          config.setLedCount((uint8_t)ledCount);
+        // command to set LED count: "N:<value>" where <value> is number of LEDs
+        if(text[1]=='N' && strlen(text+1)>2) {
+          int ledCount = atoi(text + 3);
+          if(ledCount >= 0 && ledCount <= MAX_NUM_LEDS) {
+            config.setLedCount((uint8_t)ledCount);
+          }
         }
-      }
       #endif
     } // if(radio.available(&pipe))
 
@@ -575,7 +597,7 @@ void initializeLedStripPattern(bool enablePattern) {
     }
   }
 
-  #ifdef NEEDS_WAKEUP
+  #ifdef ENABLE_SLEEP
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
   #else
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
@@ -592,7 +614,7 @@ void stepLedStripPattern() {
   }
   ledArray[0] = lastLed;
 
-  #ifdef NEEDS_WAKEUP
+  #ifdef ENABLE_SLEEP
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
   #else
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data

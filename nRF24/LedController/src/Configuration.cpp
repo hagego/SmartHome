@@ -9,6 +9,8 @@ Configuration::Configuration()
     pwmValue = 10;              // default PWM value 100%
     illuminanceThreshold = 20;  // default illuminance threshold 20 lux
     ledCount = 0;               // default LED count 0
+    addressByte = 'p';          // default address byte 'p'
+    sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
 }
 
 void Configuration::init()
@@ -23,6 +25,7 @@ void Configuration::init()
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
         addressByte = 'p';          // default address byte 0
+        sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
 
         // write defaults to EEPROM
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
@@ -32,6 +35,7 @@ void Configuration::init()
         writeByteToEEPROM(ADDRESS_ILLUMINANCE, illuminanceThreshold);
         writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
         writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
+        writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
     } else {
         // read values from EEPROM
         clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
@@ -40,6 +44,7 @@ void Configuration::init()
         illuminanceThreshold = readByteFromEEPROM(ADDRESS_ILLUMINANCE);
         ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
         addressByte          = readByteFromEEPROM(ADDRESS_ADDRESS_BYTE);
+        sleepPeriod          = readWordFromEEPROM(ADDRESS_SLEEP_PERIOD);
 
         if(addressByte != 'e' && addressByte != 'o' && addressByte != 'p' ) {
           // invalid address byte, reset to default
@@ -108,6 +113,16 @@ void Configuration::setAddressByte(uint8_t addressByte)
 {
     this->addressByte = addressByte;
     writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
+}
+
+uint16_t Configuration::getSleepPeriod()
+{
+    return sleepPeriod;
+}
+void Configuration::setSleepPeriod(uint16_t sleepPeriod)
+{
+    this->sleepPeriod = sleepPeriod;
+    writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
 }
 
 

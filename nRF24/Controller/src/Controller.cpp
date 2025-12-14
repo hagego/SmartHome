@@ -37,7 +37,7 @@ const uint8_t PIN_MOTION_SENSOR = 16;  // local motion sensor pin, D0 on D1 mini
 // nRF24 addresses to listen to
 // 0:   <x>ctrl: transmit
 // 1-5: <x>clnt: clients 1-5
-uint8_t nRF24Addresses[][6] = {RF24_ADDR_SEND, RF24_ADDR_RECEIVE}; 
+uint8_t nRF24Addresses[][6] = {"ctrl ", RF24_ADDR_RECEIVE}; 
 
 // nRF24 payload size
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
@@ -309,7 +309,15 @@ void loop() {
     if(   text[1] == 'V' 
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
       sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorBattery);
-      mqttClient.publish(mqttTopicName, text+3);
+
+      // some clients report battery voltage in mV, convert to V
+      float voltage = atof(text+3);
+      if(voltage>10) {
+        // assume mV
+        voltage = voltage / 1000.0;
+      }
+      sprintf(buffer,"%.1f",voltage);
+      mqttClient.publish(mqttTopicName, buffer);
     }
 
     if(   text[1] == 'I' 

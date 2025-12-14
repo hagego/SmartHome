@@ -39,6 +39,10 @@ class Configuration {
     uint8_t getAddressByte();
     void    setAddressByte(uint8_t addressByte);
 
+    // gets/sets sleep period in seconds
+    uint16_t getSleepPeriod();
+    void     setSleepPeriod(uint16_t sleepPeriod);
+
   private:
   
     // data members
@@ -48,6 +52,7 @@ class Configuration {
     uint8_t  illuminanceThreshold;
     uint8_t  ledCount;
     uint8_t  addressByte;
+    uint16_t sleepPeriod;
 
     // addresses
     static const uint8_t ADDRESS_IS_INITIALIZED = 0;  // stores a magic number if initialized
@@ -57,6 +62,7 @@ class Configuration {
     static const uint8_t ADDRESS_ILLUMINANCE    = 5;  // illuminance threshold in lux (1 byte)
     static const uint8_t ADDRESS_LED_COUNT      = 6;  // WS2812 LED count (1 byte)
     static const uint8_t ADDRESS_ADDRESS_BYTE   = 7;  // 1st byte of nRF24 send pipe (pipe 0) (1 byte)
+    static const uint8_t ADDRESS_SLEEP_PERIOD   = 8;  // sleep period in seconds (2 byte)
 
     // magic number to check if EEPROM has been initialized with default data
     static const uint8_t MAGIC_NUMBER           = 42;

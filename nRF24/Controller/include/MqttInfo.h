@@ -16,7 +16,7 @@ class MqttInfo {
         static const char* topicPublishClientMessage;
 
         // array to map of RF24 client IDs to MQTT prefixes
-        static const int   NUM_CLIENT_PREFIXES = 3;
+        static const int   NUM_CLIENT_PREFIXES = 5;
         static const char* mqttPrefixForClientId[];
 
         // MQTT publish topics related to sensors

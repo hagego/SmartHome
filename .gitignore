@@ -20,4 +20,5 @@ nRF24/EspRemoteControl/include/WifiInfo.h
 nRF24/Controller/include/WifiInfo.h
 nRF24/PCBs/Button/Button.kicad_prl
 nRF24/PCBs/Button/Button-backups
+nRF24/PCBs/*.FCBak
 .gitignore

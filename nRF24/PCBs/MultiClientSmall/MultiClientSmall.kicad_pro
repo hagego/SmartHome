@@ -60,6 +60,18 @@
       ],
       "drc_exclusions": [
         [
+          "courtyards_overlap|143655645|115781000|23e4de69-a151-4433-abb7-230c6db62148|7a370305-3560-4a44-804b-a11f6a0ac3e0",
+          ""
+        ],
+        [
+          "courtyards_overlap|144945000|116337000|23e4de69-a151-4433-abb7-230c6db62148|676b325c-e1d3-4e94-9036-6b8575d0dbf2",
+          ""
+        ],
+        [
+          "courtyards_overlap|144945000|117319482|676b325c-e1d3-4e94-9036-6b8575d0dbf2|7a370305-3560-4a44-804b-a11f6a0ac3e0",
+          ""
+        ],
+        [
           "lib_footprint_mismatch|144288000|107484000|c6aafa48-b635-42be-9ada-481b41c4ff7c|00000000-0000-0000-0000-000000000000",
           "changed pin assignment"
         ],
@@ -254,7 +266,28 @@
     "equivalence_files": []
   },
   "erc": {
-    "erc_exclusions": [],
+    "erc_exclusions": [
+      [
+        "pin_not_connected|1066800|698500|4ec3ae84-76ff-4988-a8bf-70f0ad233b3b|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "pin_not_connected|1168400|698500|09e258a2-b4a1-4bac-866a-902054ba10d9|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "pin_not_connected|1930400|1104900|bc3fae4f-6e66-4cb2-abf4-ccb03c1e20de|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "pin_not_connected|952500|889000|2c96e96d-f43d-459e-9792-753c361f8f6b|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "pin_not_connected|952500|914400|65a2c5fd-d1af-4c7d-9f32-a7690936f926|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ]
+    ],
     "meta": {
       "version": 0
     },
@@ -479,7 +512,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "Button.kicad_pro",
+    "filename": "MultiClientSmall.kicad_pro",
     "version": 3
   },
   "net_settings": {

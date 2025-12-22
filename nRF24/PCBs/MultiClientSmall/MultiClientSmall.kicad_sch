@@ -1510,6 +1510,124 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "hagego:AM312"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "U"
+				(at -0.762 7.874 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "AM312"
+				(at 2.032 5.842 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "hagego:AM312"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "AM312_0_1"
+				(rectangle
+					(start -1.27 5.08)
+					(end 5.08 -5.08)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "AM312_1_1"
+				(pin power_in line
+					(at -3.81 2.54 0)
+					(length 2.54)
+					(name "VCC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -3.81 0 0)
+					(length 2.54)
+					(name "VOUT"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at -3.81 -2.54 0)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "hagego:BH1750_Module"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -1936,6 +2054,18 @@
 		(color 0 0 0 0)
 		(uuid "da1dbf61-d783-4c05-bc69-c35a5c17f8a5")
 	)
+	(junction
+		(at 175.26 133.35)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "e6c282f1-911e-4c3d-b406-fc4972eedce7")
+	)
+	(junction
+		(at 185.42 123.19)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "ef5eb5ae-eca8-40e8-87fe-108b0320d024")
+	)
 	(wire
 		(pts
 			(xy 83.82 101.6) (xy 88.9 101.6)
@@ -1965,6 +2095,16 @@
 			(type default)
 		)
 		(uuid "0b920a11-e70a-40f3-9403-33ef4ccbfcaa")
+	)
+	(wire
+		(pts
+			(xy 152.4 104.14) (xy 157.48 104.14)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0caa058e-2d6b-402d-bc0b-f72521e1146f")
 	)
 	(wire
 		(pts
@@ -2015,6 +2155,16 @@
 			(type default)
 		)
 		(uuid "196ce325-19d6-468c-b553-536b4d4d4963")
+	)
+	(wire
+		(pts
+			(xy 157.48 144.78) (xy 193.04 144.78)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1defb7dc-4a8a-42ef-8236-9cdabaa940ab")
 	)
 	(wire
 		(pts
@@ -2198,6 +2348,26 @@
 	)
 	(wire
 		(pts
+			(xy 175.26 133.35) (xy 175.26 147.32)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "44b07c84-8d37-4e1f-83bc-65e0f8905e0a")
+	)
+	(wire
+		(pts
+			(xy 185.42 142.24) (xy 193.04 142.24)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "52075aff-ccfe-487b-b59e-9c537467236b")
+	)
+	(wire
+		(pts
 			(xy 95.25 93.98) (xy 93.98 93.98)
 		)
 		(stroke
@@ -2255,6 +2425,16 @@
 			(type default)
 		)
 		(uuid "5da98523-2abe-45c8-ba69-4714389d736b")
+	)
+	(wire
+		(pts
+			(xy 175.26 147.32) (xy 193.04 147.32)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5e4d626c-ec55-474c-a2fb-db583ef8b2be")
 	)
 	(wire
 		(pts
@@ -2578,6 +2758,16 @@
 	)
 	(wire
 		(pts
+			(xy 157.48 104.14) (xy 157.48 144.78)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bc114bd3-4704-4112-baee-b6aa7c18d3a9")
+	)
+	(wire
+		(pts
 			(xy 83.82 99.06) (xy 95.25 99.06)
 		)
 		(stroke
@@ -2615,6 +2805,16 @@
 			(type default)
 		)
 		(uuid "d282cb06-a1e9-47fd-80b2-c039b513494a")
+	)
+	(wire
+		(pts
+			(xy 185.42 123.19) (xy 185.42 142.24)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d2896e5f-8cae-4cac-818f-df431e5cdd7f")
 	)
 	(wire
 		(pts
@@ -2862,6 +3062,79 @@
 			(project ""
 				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
 					(reference "R1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "hagego:AM312")
+		(at 196.85 144.78 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "1d54eab8-3eb2-4621-8e6d-2f535f0f9120")
+		(property "Reference" "U5"
+			(at 203.2 143.5099 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "AM312"
+			(at 203.2 146.0499 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "hagego:AM312"
+			(at 196.85 144.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 196.85 144.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 196.85 144.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "b2d52ece-f248-4134-8493-1139732fc9b7")
+		)
+		(pin "2"
+			(uuid "c01d6606-3142-4d17-bc7f-6115e2d1448b")
+		)
+		(pin "3"
+			(uuid "d7b3d8e1-2692-4202-bb49-e6c05120c584")
+		)
+		(instances
+			(project ""
+				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
+					(reference "U5")
 					(unit 1)
 				)
 			)

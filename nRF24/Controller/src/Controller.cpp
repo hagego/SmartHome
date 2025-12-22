@@ -219,12 +219,9 @@ void setup() {
   // start nRF24 radio
   radio.begin();
  
-  // listen to all addresses in nRF24Addresses
-  for(uint8 i=0; i<sizeof(nRF24Addresses)/sizeof(nRF24Addresses[0]); i++) {
-    Serial.printf("Listening to nRF24 address %d: %s\n",i,nRF24Addresses[i]);
-    radio.openReadingPipe(i, nRF24Addresses[i]);
-  }
 
+  // listen to address 1 only
+  radio.openReadingPipe(1, nRF24Addresses[1]);
   
   radio.setAutoAck(1);            // Ensure autoACK is enabled
   radio.enableAckPayload();       // Allow optional ack payloads
@@ -326,6 +323,12 @@ void loop() {
       mqttClient.publish(mqttTopicName, text+3);
     }
 
+    if(   text[1] == 'D' 
+       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorTemperature);
+      mqttClient.publish(mqttTopicName, text+3);
+    }
+
     if(   text[1] == 'M' && text[3] != '0'
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
       // client connected
@@ -354,10 +357,8 @@ void loop() {
           messageBuffer.deleteMessage(&message);
         }
 
-        // switch to listen mode again
-        for(uint8 i=0; i<sizeof(nRF24Addresses)/sizeof(nRF24Addresses[0]); i++) {
-          radio.openReadingPipe(i, nRF24Addresses[i]);
-        }
+        // listen to address 1 only
+        radio.openReadingPipe(1, nRF24Addresses[1]);
 
         radio.startListening();                   // set module as receiver again
       } // message was sent

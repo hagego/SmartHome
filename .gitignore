@@ -26,3 +26,4 @@ nRF24/PCBs/MultiClientSmall/MultiClientSmall.kicad_sch-bak
 nRF24/PCBs/MultiClientSmall/MultiClientSmall-backups
 .gitignore
 .gitignore
+nRF24/PCBs/MultiClientSmall/fp-info-cache

@@ -60,27 +60,15 @@
       ],
       "drc_exclusions": [
         [
-          "courtyards_overlap|143655645|115781000|23e4de69-a151-4433-abb7-230c6db62148|7a370305-3560-4a44-804b-a11f6a0ac3e0",
+          "courtyards_overlap|135080778|117869000|23e4de69-a151-4433-abb7-230c6db62148|336b5582-def9-4cb9-8dba-7f7da929136c",
           ""
         ],
         [
-          "courtyards_overlap|144945000|116337000|23e4de69-a151-4433-abb7-230c6db62148|676b325c-e1d3-4e94-9036-6b8575d0dbf2",
+          "courtyards_overlap|143204341|115425000|23e4de69-a151-4433-abb7-230c6db62148|7a370305-3560-4a44-804b-a11f6a0ac3e0",
           ""
         ],
         [
-          "courtyards_overlap|144945000|117319482|676b325c-e1d3-4e94-9036-6b8575d0dbf2|7a370305-3560-4a44-804b-a11f6a0ac3e0",
-          ""
-        ],
-        [
-          "lib_footprint_mismatch|144288000|107484000|c6aafa48-b635-42be-9ada-481b41c4ff7c|00000000-0000-0000-0000-000000000000",
-          "changed pin assignment"
-        ],
-        [
-          "silk_over_copper|132656000|112684000|0a5859a0-e566-404f-bc7b-a9b2aafa935e|00000000-0000-0000-0000-000000000000",
-          ""
-        ],
-        [
-          "silk_over_copper|138713999|114523718|e9c0c6db-9b6c-4aa4-9ad7-84a3bdebd738|00000000-0000-0000-0000-000000000000",
+          "courtyards_overlap|145235691|117869000|336b5582-def9-4cb9-8dba-7f7da929136c|7a370305-3560-4a44-804b-a11f6a0ac3e0",
           ""
         ]
       ],
@@ -276,15 +264,19 @@
         ""
       ],
       [
-        "pin_not_connected|1930400|1104900|bc3fae4f-6e66-4cb2-abf4-ccb03c1e20de|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
-        ""
-      ],
-      [
         "pin_not_connected|952500|889000|2c96e96d-f43d-459e-9792-753c361f8f6b|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
         ""
       ],
       [
         "pin_not_connected|952500|914400|65a2c5fd-d1af-4c7d-9f32-a7690936f926|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|952500|889000|2c96e96d-f43d-459e-9792-753c361f8f6b|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|952500|914400|65a2c5fd-d1af-4c7d-9f32-a7690936f926|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
         ""
       ]
     ],
@@ -491,7 +483,7 @@
       "no_connect_dangling": "warning",
       "pin_not_connected": "error",
       "pin_not_driven": "error",
-      "pin_to_pin": "warning",
+      "pin_to_pin": "error",
       "power_pin_not_driven": "error",
       "same_local_global_label": "warning",
       "similar_label_and_power": "warning",
@@ -538,7 +530,7 @@
       {
         "name": "GND",
         "pcb_color": "rgb(1, 1, 1)",
-        "priority": 0,
+        "priority": 1,
         "schematic_color": "rgb(1, 1, 1)"
       },
       {
@@ -549,11 +541,17 @@
         "microvia_drill": 0.1,
         "name": "Power",
         "pcb_color": "rgb(255, 0, 0)",
-        "priority": 1,
+        "priority": 2,
         "schematic_color": "rgb(255, 0, 0)",
         "track_width": 0.5,
         "via_diameter": 0.7,
         "via_drill": 0.3
+      },
+      {
+        "name": "SPI",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0,
+        "schematic_color": "rgb(255, 10, 232)"
       }
     ],
     "meta": {
@@ -573,6 +571,18 @@
       {
         "netclass": "GND",
         "pattern": "/GND"
+      },
+      {
+        "netclass": "SPI",
+        "pattern": "/SCK"
+      },
+      {
+        "netclass": "SPI",
+        "pattern": "/MISO"
+      },
+      {
+        "netclass": "SPI",
+        "pattern": "/MOSI"
       }
     ]
   },

@@ -28,3 +28,7 @@ nRF24/PCBs/MultiClientSmall/MultiClientSmall-backups
 .gitignore
 nRF24/PCBs/MultiClientSmall/fp-info-cache
 nRF24/PCBs/LedStripController/MultiClientSmall-backups/*
+nRF24/PCBs/*.stl
+nRF24/PCBs/LedStripController/fp-info-cache
+nRF24/PCBs/LedStripController/LedStripController-backups/*
+nRF24/PCBs/LedStripController/LedStripController.kicad_sch-bak

@@ -225,9 +225,9 @@ void setup() {
   
   radio.setAutoAck(1);            // Ensure autoACK is enabled
   radio.enableAckPayload();       // Allow optional ack payloads
-  radio.enableDynamicAck();      // Allow dynamic ACKs
+  radio.enableDynamicAck();       // Allow dynamic ACKs
   radio.setRetries(5,15);         // Max delay between retries & number of retries
-  radio.setPALevel(RF24_PA_HIGH); // Set power level to high
+  radio.setPALevel(RF24_PA_MAX);  // Set power level to max
   radio.setPayloadSize(nRF24PayloadSize);
   radio.startListening();         // set module as receiver
 
@@ -295,6 +295,9 @@ void loop() {
     // MqttInfo::topicPublishClientMessage
     sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
     mqttClient.publish(buffer, text+3);
+
+    sprintf(buffer,"%s/%d/controller",MqttInfo::topicPublishClientMessage,client_id);
+    mqttClient.publish(buffer, MQTT_CLIENT_ID);
     
     if(   text[1] == 'C' && text[3] == '1'
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
@@ -326,7 +329,10 @@ void loop() {
     if(   text[1] == 'D' 
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
       sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorTemperature);
-      mqttClient.publish(mqttTopicName, text+3);
+      // temperature gets sent as integer * 10
+      float temperature = atof(text+3) / 10.0;
+      sprintf(buffer,"%.1f",temperature);
+      mqttClient.publish(mqttTopicName, buffer);
     }
 
     if(   text[1] == 'M' && text[3] != '0'

@@ -187,7 +187,7 @@ void setup() {
   radio.enableAckPayload();                  // enable payloads within ACK packets
   radio.setRetries(5,15);                    // Max delay between retries & number of retries
   radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
-  radio.setPALevel(RF24_PA_HIGH);            // Set power level to high
+  radio.setPALevel(RF24_PA_MAX);             // Set power level to max
   radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
 
   // initialize ADC for battery voltage measurement
@@ -209,6 +209,11 @@ void setup() {
     payload[1] = 'S';
     utoa(config.getSleepPeriod(), payload+3, 10);
     radio.write( payload,sizeof(payload) );
+  #endif
+
+  #ifdef ILLUMINANCE_SENSOR
+    // measure illuminance
+    readAndSendIlluminance();
   #endif
 
   // measure battery voltage and send
@@ -266,6 +271,9 @@ void loop() {
 
       // power up radio after waking up
       radio.powerUp();
+      delayMicroseconds(5000);                   // wait for radio to stabilize
+      radio.setRetries(5,15);                    // Max delay between retries & number of retries
+      radio.setPALevel(RF24_PA_MAX);             // Set power level to max
     }
 
     radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
@@ -681,12 +689,16 @@ float readAndSendIlluminance() {
 #endif
 
 #ifdef ENV_SENSOR
+/**
+ * read environmental data using BME280 sensor
+ * Temperature is sent in degree Celsius multiplied by 10
+ */
 void readAndSendEnvironmentalData() {
   BME280I2C bme;
 
   if(bme.begin()) {
     payload[1] = 'D';
-    utoa((int16_t)(bme.temp()), payload+3, 10); 
+    itoa((int16_t)(bme.temp() * 10), payload+3, 10); 
     radio.write( payload,sizeof(payload) );  // Send data
   }
 }

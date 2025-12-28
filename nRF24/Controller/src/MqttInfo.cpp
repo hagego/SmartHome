@@ -4,7 +4,7 @@
 const char* MqttInfo::topicPublishConnected       = MQTT_PREFIX "connected";        // gets published right after connect
 const char* MqttInfo::topicPublishIsAlive         = MQTT_PREFIX "isAlive";          // gets published right after connect
 const char* MqttInfo::topicPublishDebugMessage    = MQTT_PREFIX "debugMessage";     // debug messages (if enabled)
-const char* MqttInfo::topicPublishClientMessage   = MQTT_PREFIX "clientMessage";    // message from nRF24 clients
+const char* MqttInfo::topicPublishClientMessage   = "nRF24Client/clientMessage";    // message from nRF24 clients
 
 // MQTT subscription topics related to controller
 const char* MqttInfo::topicSubscribeEnableMqttDebug = MQTT_PREFIX "enableMqttDebug";  // enable or disable debug messages (payload "1" or "0")
@@ -28,5 +28,5 @@ const char* MqttInfo::mqttPrefixForClientId[NUM_CLIENT_PREFIXES] = {
     "sensor/dg/",         // client ID 1 : battery light DG
     "sensor/entrance/",   // client ID 2 : motion sensor entrance
     "sensor/wallbox/",    // client ID 3 : battery light wallbox
-    "sensor/terrace2/"    // client ID 4 : terrace sensor
+    "sensor/terrace1/"    // client ID 4 : terrace sensor
 };

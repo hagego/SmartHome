@@ -32,3 +32,6 @@ nRF24/PCBs/*.stl
 nRF24/PCBs/LedStripController/fp-info-cache
 nRF24/PCBs/LedStripController/LedStripController-backups/*
 nRF24/PCBs/LedStripController/LedStripController.kicad_sch-bak
+nRF24/PCBs/ProgrammingAdapter/ProgrammingAdapter.kicad_sch-bak
+nRF24/PCBs/ProgrammingAdapter/ProgrammingAdapter-backups/*
+nRF24/PCBs/ProgrammingAdapter/fp-info-cache

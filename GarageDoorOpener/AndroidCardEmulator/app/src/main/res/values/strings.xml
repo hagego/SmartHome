@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">NfcCardGarageDoorOpener</string>
+    <string name="servicedesc">Garage Door Opener</string>
+    <string name="aiddescription">Garage Door Opener</string>
+</resources>

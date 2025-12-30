@@ -268,6 +268,14 @@
         ""
       ],
       [
+        "pin_to_pin|736600|1041400|33728dd1-9bd9-4236-a3a1-382b6c9b23a4|3ff9a80f-2bc1-406e-b1cf-925061bd30c1|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b",
+        ""
+      ],
+      [
+        "pin_to_pin|952500|965200|3ff9a80f-2bc1-406e-b1cf-925061bd30c1|c73d3636-df1d-48a2-9968-cb285e84d7c1|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b",
+        ""
+      ],
+      [
         "power_pin_not_driven|952500|889000|2c96e96d-f43d-459e-9792-753c361f8f6b|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
         ""
       ],
@@ -564,7 +572,11 @@
       },
       {
         "netclass": "GND",
-        "pattern": "/GND"
+        "pattern": "GND"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "/VLED"
       }
     ]
   },

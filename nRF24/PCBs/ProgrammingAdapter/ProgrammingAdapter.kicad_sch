@@ -3092,6 +3092,12 @@
 		(uuid "32fac4ca-7692-4335-8527-f5778ccb1aba")
 	)
 	(junction
+		(at 123.19 161.29)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "33198bb6-70d0-40f1-8c68-6badda5c0884")
+	)
+	(junction
 		(at 160.02 66.04)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3259,6 +3265,12 @@
 		(color 0 0 0 0)
 		(uuid "c65b5ab9-f5fa-47c4-b581-2f688599b273")
 	)
+	(junction
+		(at 130.81 163.83)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "d0e8e454-6ede-4b11-bc3e-88458957fff8")
+	)
 	(no_connect
 		(at 76.2 72.39)
 		(uuid "0245ae19-dce6-4492-8845-d131a94adfe0")
@@ -3393,6 +3405,16 @@
 	)
 	(wire
 		(pts
+			(xy 109.22 175.26) (xy 130.81 175.26)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "03df8f7c-6c3e-4679-bd15-5a42bdf7f8a7")
+	)
+	(wire
+		(pts
 			(xy 165.1 69.85) (xy 146.05 69.85)
 		)
 		(stroke
@@ -3400,6 +3422,16 @@
 			(type default)
 		)
 		(uuid "06f76e3c-5d09-4c3a-8196-37715515b3bc")
+	)
+	(wire
+		(pts
+			(xy 130.81 163.83) (xy 130.81 175.26)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "08f4bcff-64fb-4327-9196-ccd4efc39f0f")
 	)
 	(wire
 		(pts
@@ -3500,6 +3532,16 @@
 			(type default)
 		)
 		(uuid "1d356e1f-26df-4ef0-b29e-520d87dfab11")
+	)
+	(wire
+		(pts
+			(xy 60.96 34.29) (xy 60.96 36.83)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1db58067-81ff-4be6-8892-87f3f1ddc173")
 	)
 	(wire
 		(pts
@@ -4333,6 +4375,16 @@
 	)
 	(wire
 		(pts
+			(xy 123.19 161.29) (xy 123.19 172.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b81eb794-076c-479f-8b2a-e17477e0627e")
+	)
+	(wire
+		(pts
 			(xy 142.24 53.34) (xy 157.48 53.34)
 		)
 		(stroke
@@ -4473,6 +4525,16 @@
 	)
 	(wire
 		(pts
+			(xy 149.86 71.12) (xy 142.24 71.12)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d63d0f78-418e-4709-aab9-cb56db8940b3")
+	)
+	(wire
+		(pts
 			(xy 109.22 161.29) (xy 123.19 161.29)
 		)
 		(stroke
@@ -4533,6 +4595,16 @@
 	)
 	(wire
 		(pts
+			(xy 123.19 172.72) (xy 109.22 172.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e08c0da1-8a45-4ebd-aaa2-0d821e87bbef")
+	)
+	(wire
+		(pts
 			(xy 165.1 105.41) (xy 165.1 69.85)
 		)
 		(stroke
@@ -4570,6 +4642,16 @@
 			(type default)
 		)
 		(uuid "e46b4660-7379-4859-93ea-99b8e5146dac")
+	)
+	(wire
+		(pts
+			(xy 109.22 177.8) (xy 149.86 177.8)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e559147e-eb14-4ef2-acbb-9bff120d109a")
 	)
 	(wire
 		(pts
@@ -4700,6 +4782,16 @@
 			(type default)
 		)
 		(uuid "fe2db2db-075a-40a8-bed3-c6bf4584b08e")
+	)
+	(wire
+		(pts
+			(xy 149.86 71.12) (xy 149.86 177.8)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fef8df38-0278-4e0b-82c2-a5412023669a")
 	)
 	(wire
 		(pts
@@ -4857,72 +4949,6 @@
 			(project ""
 				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
 					(reference "R1")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:+5V")
-		(at 60.96 36.83 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "1a4da6ae-0366-4f85-bf5b-71258d538952")
-		(property "Reference" "#PWR02"
-			(at 60.96 40.64 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "+5V"
-			(at 60.96 31.75 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 60.96 36.83 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 60.96 36.83 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 60.96 36.83 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "bc9ed41f-499b-4d6a-abb7-4d308fe80147")
-		)
-		(instances
-			(project ""
-				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
-					(reference "#PWR02")
 					(unit 1)
 				)
 			)
@@ -5125,6 +5151,141 @@
 			(project ""
 				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
 					(reference "#PWR01")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+5V")
+		(at 60.96 34.29 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "4455a5d3-1586-441a-a9ba-dc977b467a9f")
+		(property "Reference" "#PWR02"
+			(at 60.96 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+5V"
+			(at 60.96 30.226 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 60.96 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 60.96 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+5V\""
+			(at 60.96 34.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "4bc742fd-d5a5-42d4-bf27-36f35d47633f")
+		)
+		(instances
+			(project ""
+				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
+					(reference "#PWR02")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:Conn_01x03_Pin")
+		(at 104.14 175.26 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "4edce05e-7f62-4ed4-9a8e-19d99298ba7f")
+		(property "Reference" "J5"
+			(at 98.806 172.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "AM312"
+			(at 98.806 175.514 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "hagego:JST_XH_1x03_P2.54"
+			(at 104.14 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 104.14 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x03, script generated"
+			(at 104.14 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "fabb1094-462f-4a1d-85f9-af271efabf61")
+		)
+		(pin "3"
+			(uuid "8613cda5-ef22-48ac-bddf-be20a2fd621e")
+		)
+		(pin "2"
+			(uuid "d5bf71a0-d8bb-4065-ba71-df3715a39bae")
+		)
+		(instances
+			(project "ProgrammingAdapter"
+				(path "/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b"
+					(reference "J5")
 					(unit 1)
 				)
 			)

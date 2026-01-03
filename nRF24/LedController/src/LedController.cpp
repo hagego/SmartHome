@@ -43,6 +43,8 @@
 #include "Configuration.h"
 
 
+// threshold for long button press in ms
+const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
@@ -72,6 +74,7 @@ char          ack[1];                    // create an ack buffer
 // Function prototypes
 void   initAdc();                              // initialize ADC for battery voltage measurement
 void   readAndSendBatteryVoltage();            // measures battery voltage and sends it via nRF24
+void   reportConfiguration();                  // send current configuration via nRF24
 
 #ifdef ENABLE_SLEEP
 void   enterSleep();                           // enter sleep mode
@@ -124,8 +127,8 @@ void setup() {
     #error "Unsupported F_CPU for PWM initialization"
   #endif
 
-  // wait 500ms before initializing configuration
-  for(uint8_t i=0; i<10; i++)
+  // wait 1s before initializing configuration
+  for(uint8_t i=0; i<20; i++)
   {
     delayMicroseconds(50000);
   } 
@@ -140,7 +143,7 @@ void setup() {
   DDRA  |=  _BV(PA7);            // pin  6: Set PA7 as output for PWM to LED driver
   DDRA  |=  _BV(PA6);            // pin  7: Set PA6 as output: SPI MOSI for nRF24LO1
   DDRA  &= ~_BV(PA5);            // pin  8: Set PA5 as input: SPI MISO for nRF24LO1
-  DDRA  |=  _BV(PA4);            // pin  9: Set PA4 as output: SPI SCK for nRF24LO1
+  DDRA  |=  _BV(PA4);            // pin  9:Conn_01x03 Set PA4 as output: SPI SCK for nRF24LO1
   #if defined(LED_TYPE_PWM) || defined(LED_TYPE_WS2812)
   DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
   PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver => LED off
@@ -199,17 +202,8 @@ void setup() {
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
 
-  // send timeout setting
-  payload[1] = 'T';
-  itoa(config.getTimeout(), payload+3, 10);
-  radio.write( payload,sizeof(payload) );
-
-  #ifdef ENV_SENSOR
-    // send sleep period setting
-    payload[1] = 'S';
-    utoa(config.getSleepPeriod(), payload+3, 10);
-    radio.write( payload,sizeof(payload) );
-  #endif
+  // report current configuration
+  reportConfiguration();
 
   #ifdef ILLUMINANCE_SENSOR
     // measure illuminance
@@ -246,8 +240,10 @@ void setup() {
 }
 
 bool ledStripPatternEnabled = false;
+uint8_t wakeupSource = 0;                        // 0 = none, 1 = motion sensor 1, 2 = motion sensor 2, 3 = button input as motion sensor 3
 void loop() {
   #ifdef ENABLE_SLEEP
+    wakeupSource = 0;
     if(!justStarted) {
       radio.powerDown();                         // Power down the radio immediately after sending
     }
@@ -279,16 +275,16 @@ void loop() {
     radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
 
     #ifdef ILLUMINANCE_SENSOR
-    // measure illuminance
-    float illuminance = readAndSendIlluminance();
+      // measure illuminance
+      float illuminance = readAndSendIlluminance();
 
-    #ifdef LED_TYPE_PWM
-      if(illuminance <= config.getIlluminanceThreshold()) {
-        // ambient light is insufficient, turn on LED
-        setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
-        PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
-      }
-    #endif
+      #ifdef LED_TYPE_PWM
+        if(illuminance <= config.getIlluminanceThreshold()) {
+          // ambient light is insufficient, turn on LED
+          setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
+          PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
+        }
+      #endif
     #endif
 
     #ifdef ENV_SENSOR
@@ -303,24 +299,38 @@ void loop() {
 
     if((PINB & _BV(PB0)) == _BV(PB0)) {
       payload[3] = '1';
+      wakeupSource = 1;
     }
     if((PINB & _BV(PB3)) == _BV(PB3)) {
       payload[3] = '2';
+      wakeupSource = 2;
     }
-    // check if PA3 is low
-    if((PINA & _BV(PA3)) == 0) {
+
+    #ifdef BUTTON
+      // check if PA3 is low (as button input)
+      if((PINA & _BV(PA3)) == 0) {
       payload[3] = '3';
-    }
+      wakeupSource = 3;
+
+      
+        // wait until PA3 goes high again (button released)
+        uint64_t buttonStartTime = millis();
+        while((PINA & _BV(PA3)) == 0) {
+          delayMicroseconds(1000);
+        }
+        uint64_t buttonPressDuration = millis() - buttonStartTime;
+        if(buttonPressDuration > LONG_PRESS_THRESHOLD_MS) {
+          // long press detected, set wakeup source to 0 to ignore motion sensor 3 for now
+          payload[3] = 'L';
+        }
+      }
+    #endif
 
     radio.write( payload,sizeof(payload) );
 
     // measure battery voltage and send
     readAndSendBatteryVoltage();   // read voltage
 
-    // wait 500ms for debounce
-    for(uint16_t i=0; i<500; i++) {
-      delayMicroseconds(1000);
-    }
   #endif // ENABLE_SLEEP
 
   justStarted = false;
@@ -331,8 +341,9 @@ void loop() {
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
 
-  radio.txStandBy();              // Wait for the transmission to complete
   delayMicroseconds(10000);
+  radio.txStandBy();              // Wait for the transmission to complete
+  
 
   // Now set the module as receiver and wait for commands
   radio.openReadingPipe(1, nRF24Addresses[1]);
@@ -364,6 +375,18 @@ void loop() {
       // command to switch off: "O"
       if(text[1]=='O') {
         exitCondition = true;
+      }
+
+      // command to trigger a report of current configuration: "R"
+      if(text[1]=='R') {
+        radio.stopListening();          // set module as transmitter
+        reportConfiguration();
+        radio.txStandBy();
+
+        // return to listening mode
+        radio.openReadingPipe(1, nRF24Addresses[1]);
+        radio.startListening();   
+        
       }
 
       if(strlen(text+1)>2) {
@@ -449,6 +472,17 @@ void loop() {
         payload[1] = 'M';
         payload[3] = '3';
         payload[4] = 0;
+
+        // wait until PA3 goes high again (button released)
+        uint64_t buttonStartTime = millis();
+        while((PINA & _BV(PA3)) == 0) {
+          delayMicroseconds(1000);
+        }
+        uint64_t buttonPressDuration = millis() - buttonStartTime;
+        if(buttonPressDuration > LONG_PRESS_THRESHOLD_MS) {
+          // long press detected, set wakeup source to 0 to ignore motion sensor 3 for now
+          payload[3] = 'L';
+        }
 
         radio.stopListening();          // set module as transmitter
         radio.write( payload,sizeof(payload) );
@@ -704,3 +738,53 @@ void readAndSendEnvironmentalData() {
 }
 #endif
 
+void reportConfiguration() {
+  // send client ID
+  payload[1] = 'X';
+  utoa((uint16_t)(config.getClientId()), payload+3, 10);
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(10000);
+
+  // send address byte
+  payload[1] = 'A';
+  payload[3] = (char)(config.getAddressByte());
+  payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(10000);
+
+  // send timeout setting
+  payload[1] = 'T';
+  utoa(config.getTimeout(), payload+3, 10);
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(10000);
+
+  #ifdef ENV_SENSOR
+    // send sleep period setting
+    payload[1] = 'S';
+    utoa(config.getSleepPeriod(), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+    delayMicroseconds(10000);
+  #endif
+
+  #ifdef LED_TYPE_PWM
+    // send PWM value
+    payload[1] = 'P';
+    utoa((uint16_t)(config.getPwmValue()), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+    delayMicroseconds(10000);
+
+    // send illuminance threshold
+    payload[1] = 'I';
+    utoa((uint16_t)(config.getIlluminanceThreshold()), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+    delayMicroseconds(10000);
+  #endif
+
+  #ifdef LED_TYPE_WS2812
+    // send LED count
+    payload[1] = 'N';
+    utoa(config.getLedCount(), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+    delayMicroseconds(10000);
+  #endif
+} 

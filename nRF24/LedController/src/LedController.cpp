@@ -213,8 +213,9 @@ void setup() {
   // measure battery voltage and send
   readAndSendBatteryVoltage();
 
-  #ifdef ENV_SENSOR
+  #if defined(ENV_SENSOR) || defined(BUTTON)
     // enable the WD interrupt (note no reset)
+    // set up WDT for interrupt only mode every 8s
     wdt_reset();     // Reset the WDT timer
     cli();           // disable interrupts
     
@@ -226,8 +227,13 @@ void setup() {
     WDTCSR |= _BV(WDE) |_BV(WDIE) | _BV(WDP0) | _BV(WDP3);
     sei();
 
+    #ifdef ENV_SENSOR
+      // measure environmental data
     readAndSendEnvironmentalData();
+    #endif
   #endif
+
+
 
   #ifdef LED_TYPE_WS2812
     // send LED count
@@ -241,11 +247,18 @@ void setup() {
 
 bool ledStripPatternEnabled = false;
 uint8_t wakeupSource = 0;                        // 0 = none, 1 = motion sensor 1, 2 = motion sensor 2, 3 = button input as motion sensor 3
+
+
+
+//
+// start LOOP
+//
+boolean gotoSleepAgain = false;
 void loop() {
   #ifdef ENABLE_SLEEP
     wakeupSource = 0;
     if(!justStarted) {
-      radio.powerDown();                         // Power down the radio immediately after sending
+      radio.powerDown();                         // Power down the radio immediately after sT:5ending
     }
 
     #ifdef LED_TYPE_PWM
@@ -262,7 +275,10 @@ void loop() {
           enterSleep();
         }
       #else
-        enterSleep();
+        gotoSleepAgain = true;
+        while(gotoSleepAgain ) {
+          enterSleep();
+        }
       #endif
 
       // power up radio after waking up
@@ -414,12 +430,10 @@ void loop() {
             config.setTimeout((uint16_t)parameter);
           }
 
-          #ifdef ENV_SENSOR
           // command to set sleep period value: "S:<value>" where <value> is in seconds
           if(text[1]=='S' ) {
             config.setSleepPeriod((uint16_t)parameter);
           }
-          #endif
 
           #ifdef LED_TYPE_PWM
           // command to set PWM value: "P:<value>" where <value> is 0-100
@@ -499,7 +513,11 @@ void loop() {
     #endif
 
     delayMicroseconds(10000);
-  } // while loop
+  } // while loop  payload[1] = 'L';
+  payload[3] = '0';
+  payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+  radio.txStandBy();              // Wait for the transmission to complete
 
   radio.stopListening();          // set module as transmitter
 
@@ -543,15 +561,30 @@ void enterSleep() {
 
 // ISR for motion sensor (pin change)
 ISR (PCINT0_vect) {  
+  gotoSleepAgain = false;
 }
 ISR (PCINT1_vect) {  
+  gotoSleepAgain = false;
 }
+
+// ISR for watchdog timer
+uint16_t wdtIsrCount = 0;
 ISR (WDT_vect) {
   WDTCSR |= _BV(WDIE); // re-enable WDT interrupt
+
+  wdtIsrCount++;
+  if(wdtIsrCount>config.getSleepPeriod()/8) {
+    wdtIsrCount = 0;
+    gotoSleepAgain = false;
+  }
+  else {
+    gotoSleepAgain = true;
+  }
 }
 
 // ISR for bad interrupt
 // This is a catch-all for any interrupts that don't have a specific handler
+
 ISR(BADISR_vect) {
 }
 
@@ -758,13 +791,11 @@ void reportConfiguration() {
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(10000);
 
-  #ifdef ENV_SENSOR
     // send sleep period setting
     payload[1] = 'S';
     utoa(config.getSleepPeriod(), payload+3, 10);
     radio.write( payload,sizeof(payload) );
     delayMicroseconds(10000);
-  #endif
 
   #ifdef LED_TYPE_PWM
     // send PWM value

@@ -1950,7 +1950,7 @@
 		(descr "JST PH series connector 2.00mm")
 		(tags "connector JST PH vertical")
 		(property "Reference" "Bat1"
-			(at 1 -2.9 0)
+			(at 1.034 1.934 0)
 			(layer "F.SilkS")
 			(uuid "3562cddb-99eb-40df-9dca-cf6824499b88")
 			(effects

@@ -258,7 +258,7 @@ void loop() {
   #ifdef ENABLE_SLEEP
     wakeupSource = 0;
     if(!justStarted) {
-      radio.powerDown();                         // Power down the radio immediately after sT:5ending
+      radio.powerDown();                         // Power down the radio
     }
 
     #ifdef LED_TYPE_PWM
@@ -269,17 +269,10 @@ void loop() {
     // skips sleep on first run after power-up
     if(!justStarted) {
 
-      #ifdef ENV_SENSOR
-        uint16_t sleepCount = config.getSleepPeriod() / 8;
-        for(uint16_t i=0; i<sleepCount; i++) {
-          enterSleep();
-        }
-      #else
-        gotoSleepAgain = true;
-        while(gotoSleepAgain ) {
-          enterSleep();
-        }
-      #endif
+      gotoSleepAgain = true;
+      while(gotoSleepAgain ) {
+        enterSleep();
+      }
 
       // power up radio after waking up
       radio.powerUp();
@@ -510,14 +503,10 @@ void loop() {
         }
       }
 
-    #endif
+    #endif // BUTTON
 
     delayMicroseconds(10000);
-  } // while loop  payload[1] = 'L';
-  payload[3] = '0';
-  payload[4] = 0;
-  radio.write( payload,sizeof(payload) );
-  radio.txStandBy();              // Wait for the transmission to complete
+  } // while loop
 
   radio.stopListening();          // set module as transmitter
 
@@ -525,6 +514,12 @@ void loop() {
   payload[3] = '0';
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
+
+  payload[1] = 'M';
+  payload[3] = '0';
+  payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+
   radio.txStandBy();              // Wait for the transmission to complete
 
   delayMicroseconds(10000);
@@ -584,7 +579,6 @@ ISR (WDT_vect) {
 
 // ISR for bad interrupt
 // This is a catch-all for any interrupts that don't have a specific handler
-
 ISR(BADISR_vect) {
 }
 

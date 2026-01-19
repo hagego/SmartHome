@@ -296,8 +296,10 @@ void loop() {
     sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
     mqttClient.publish(buffer, text+3);
 
-    sprintf(buffer,"%s/%d/controller",MqttInfo::topicPublishClientMessage,client_id);
-    mqttClient.publish(buffer, MQTT_CLIENT_ID);
+    if( text[1]=='C' || (text[1]=='L') && (text[3]=='1') ) {
+      sprintf(buffer,"%s/%d/controller",MqttInfo::topicPublishClientMessage,client_id);
+      mqttClient.publish(buffer, MQTT_CLIENT_ID);
+    }
     
     if(   text[1] == 'C' && text[3] == '1'
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {

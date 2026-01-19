@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.75,
-          "height": 1.75,
-          "width": 1.2
+          "drill": 5.0,
+          "height": 5.0,
+          "width": 5.0
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -265,6 +265,10 @@
       ],
       [
         "pin_not_connected|952500|914400|65a2c5fd-d1af-4c7d-9f32-a7690936f926|00000000-0000-0000-0000-000000000000|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|",
+        ""
+      ],
+      [
+        "pin_to_pin|635000|1041400|33728dd1-9bd9-4236-a3a1-382b6c9b23a4|3ff9a80f-2bc1-406e-b1cf-925061bd30c1|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b|/c0b25fac-ce5c-4c3e-a3ea-c1cb16b4e65b",
         ""
       ],
       [

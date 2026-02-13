@@ -350,6 +350,7 @@ void loop() {
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
 
+
   delayMicroseconds(10000);
   radio.txStandBy();              // Wait for the transmission to complete
   
@@ -361,6 +362,7 @@ void loop() {
   boolean exitCondition = false;
 
   uint64_t startTime = millis();
+  radio.writeAckPayload(0, ack, sizeof(ack)); // send ack payload with client ID
   while (    !exitCondition
           && (   (config.getTimeout() == 0)
               || ((millis() - startTime) < (uint64_t)config.getTimeout() * 1000UL))) {
@@ -406,11 +408,11 @@ void loop() {
         }
 
         // ensure command has a valid parameter
-        int parameter = atoi(text + 3);
+        uint16_t parameter = (uint16_t)atol(text + 3);
         if(parameter>=0) {
           // command to set new client ID: "X:<value>" where <value> is 0-255
           if(text[1]=='X' && (targetClientId==config.getClientId() || config.getClientId()==255)) {
-            int clientId = parameter;
+            uint8_t clientId = (uint8_t)parameter;
             if(clientId > 0 && clientId <= 255) {
               // set new client ID and update payload
               config.setClientId((uint8_t)clientId);
@@ -458,7 +460,7 @@ void loop() {
             ledStripPatternEnabled = true;
           }
           else {
-            stepLedStripPattern();
+            stepLedStripPattern();int
           }
         }
 
@@ -470,6 +472,14 @@ void loop() {
           }
         }
       #endif
+
+      radio.stopListening();          // set module as transmitter
+      reportConfiguration();
+      radio.txStandBy();
+
+      // return to listening mode
+      radio.openReadingPipe(1, nRF24Addresses[1]);
+      radio.startListening();  
     } // if(radio.available(&pipe))
 
 
@@ -505,7 +515,7 @@ void loop() {
 
     #endif // BUTTON
 
-    delayMicroseconds(10000);
+    delayMicroseconds(5000);
   } // while loop
 
   radio.stopListening();          // set module as transmitter
@@ -522,7 +532,7 @@ void loop() {
 
   radio.txStandBy();              // Wait for the transmission to complete
 
-  delayMicroseconds(10000);
+  delayMicroseconds(5000);
 }
 
 
@@ -785,11 +795,11 @@ void reportConfiguration() {
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(10000);
 
-    // send sleep period setting
-    payload[1] = 'S';
-    utoa(config.getSleepPeriod(), payload+3, 10);
-    radio.write( payload,sizeof(payload) );
-    delayMicroseconds(10000);
+  // send sleep period setting
+  payload[1] = 'S';
+  ultoa(config.getSleepPeriod(), payload+3, 10);
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(10000);
 
   #ifdef LED_TYPE_PWM
     // send PWM value

@@ -11,6 +11,7 @@ Configuration::Configuration()
     ledCount = 0;               // default LED count 0
     addressByte = 'p';          // default address byte 'p'
     sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
+    longClickSupported = 0;     // default: button long click not supported
 }
 
 void Configuration::init()
@@ -26,6 +27,7 @@ void Configuration::init()
         ledCount = 0;               // default LED count 0
         addressByte = 'p';          // default address byte 0
         sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
+        longClickSupported = 0;     // default: button long click not supported
 
         // write defaults to EEPROM
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
@@ -36,6 +38,7 @@ void Configuration::init()
         writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
         writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
         writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
+        writeByteToEEPROM(ADDRESS_LONG_CLICK, longClickSupported);
     } else {
         // read values from EEPROM
         clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
@@ -45,6 +48,7 @@ void Configuration::init()
         ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
         addressByte          = readByteFromEEPROM(ADDRESS_ADDRESS_BYTE);
         sleepPeriod          = readWordFromEEPROM(ADDRESS_SLEEP_PERIOD);
+        longClickSupported   = readByteFromEEPROM(ADDRESS_LONG_CLICK);
 
         if(addressByte != 'e' && addressByte != 'o' && addressByte != 'p' ) {
           // invalid address byte, reset to default
@@ -124,6 +128,16 @@ void Configuration::setSleepPeriod(uint16_t sleepPeriod)
     this->sleepPeriod = sleepPeriod;
     writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
 }
+
+uint8_t Configuration::getLongClickSupported()
+{
+    return Configuration::longClickSupported;
+}
+void Configuration::setLongClickSupported(uint8_t longClickSupported)
+{  
+    this->longClickSupported = longClickSupported;
+    writeByteToEEPROM(ADDRESS_LONG_CLICK, longClickSupported);
+}   
 
 
 uint8_t  Configuration::readByteFromEEPROM(uint8_t address)

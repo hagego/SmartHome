@@ -43,8 +43,15 @@
 #include "Configuration.h"
 
 
+// wait time after sending data in microseconds
+const uint16_t POST_SEND_DELAY_US = 20000; // 20ms
+
 // threshold for long button press in ms
 const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
+
+// number of wakeups to skip for battery voltage measurement
+const uint8_t BATTERY_VOLTAGE_SKIP_WAKEUPS = 10;
+uint8_t batteryVoltageWakeupCounter = 0;
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
@@ -213,26 +220,23 @@ void setup() {
   // measure battery voltage and send
   readAndSendBatteryVoltage();
 
-  #if defined(ENV_SENSOR) || defined(BUTTON)
-    // enable the WD interrupt (note no reset)
-    // set up WDT for interrupt only mode every 8s
-    wdt_reset();     // Reset the WDT timer
-    cli();           // disable interrupts
-    
-    /* Clear WDRF in MCUSR */
-    MCUSR &= ~(1 << WDRF); // Clear WDRF
-    /* Write logical one to WDCE and WDE */
-    WDTCSR |= (1<<WDCE) | (1<<WDE);
-    /* Set new prescaler(time-out) value = 8s and enable */
-    WDTCSR |= _BV(WDE) |_BV(WDIE) | _BV(WDP0) | _BV(WDP3);
-    sei();
+  // enable the WD interrupt (note no reset)
+  // set up WDT for interrupt only mode every 8s
+  wdt_reset();     // Reset the WDT timer
+  cli();           // disable interrupts
+  
+  /* Clear WDRF in MCUSR */
+  MCUSR &= ~(1 << WDRF); // Clear WDRF
+  /* Write logical one to WDCE and WDE */
+  WDTCSR |= (1<<WDCE) | (1<<WDE);
+  /* Set new prescaler(time-out) value = 8s and enable */
+  WDTCSR |= _BV(WDE) |_BV(WDIE) | _BV(WDP0) | _BV(WDP3);
+  sei();
 
-    #ifdef ENV_SENSOR
-      // measure environmental data
-    readAndSendEnvironmentalData();
-    #endif
+  #ifdef ENV_SENSOR
+    // measure environmental data
+  readAndSendEnvironmentalData();
   #endif
-
 
 
   #ifdef LED_TYPE_WS2812
@@ -302,6 +306,7 @@ void loop() {
     #endif
 
     // send motion detected message
+    wakeupSource = 0; 
     payload[1] = 'M';
     payload[3] = '0';
     payload[4] = 0;
@@ -333,12 +338,20 @@ void loop() {
           payload[3] = 'L';
         }
       }
-    #endif
+    #endif // BUTTON
 
     radio.write( payload,sizeof(payload) );
+    delayMicroseconds(POST_SEND_DELAY_US);
 
     // measure battery voltage and send
-    readAndSendBatteryVoltage();   // read voltage
+    if(batteryVoltageWakeupCounter >= BATTERY_VOLTAGE_SKIP_WAKEUPS) {
+      readAndSendBatteryVoltage();
+      delayMicroseconds(POST_SEND_DELAY_US);
+      batteryVoltageWakeupCounter = 0;
+    }
+    else {
+      batteryVoltageWakeupCounter++;
+    } 
 
   #endif // ENABLE_SLEEP
 
@@ -351,7 +364,7 @@ void loop() {
   radio.write( payload,sizeof(payload) );
 
 
-  delayMicroseconds(10000);
+  delayMicroseconds(POST_SEND_DELAY_US);
   radio.txStandBy();              // Wait for the transmission to complete
   
 
@@ -397,7 +410,6 @@ void loop() {
         // return to listening mode
         radio.openReadingPipe(1, nRF24Addresses[1]);
         radio.startListening();   
-        
       }
 
       if(strlen(text+1)>2) {
@@ -430,6 +442,16 @@ void loop() {
             config.setSleepPeriod((uint16_t)parameter);
           }
 
+          #ifdef BUTTON
+            // command to set if long button click is supported: "L:<value>" where <value> is 0 or 1
+            if(text[1]=='B' ) {
+              uint8_t longClickSupported = (uint8_t)parameter;
+              if(longClickSupported == 0 || longClickSupported == 1) {
+                config.setLongClickSupported(longClickSupported);
+              }
+            }
+          #endif
+
           #ifdef LED_TYPE_PWM
           // command to set PWM value: "P:<value>" where <value> is 0-100
           if(text[1]=='P') {
@@ -460,7 +482,7 @@ void loop() {
             ledStripPatternEnabled = true;
           }
           else {
-            stepLedStripPattern();int
+            stepLedStripPattern();
           }
         }
 
@@ -472,23 +494,22 @@ void loop() {
           }
         }
       #endif
-
-      radio.stopListening();          // set module as transmitter
-      reportConfiguration();
-      radio.txStandBy();
-
-      // return to listening mode
-      radio.openReadingPipe(1, nRF24Addresses[1]);
-      radio.startListening();  
     } // if(radio.available(&pipe))
 
 
     #ifdef BUTTON
       // check for pull-up button input as motion sensor 3
       if((PINA & _BV(PA3)) == 0) {
+        radio.stopListening();          // set module as transmitter
+
         payload[1] = 'M';
         payload[3] = '3';
         payload[4] = 0;
+
+        if(!config.getLongClickSupported()) {
+          // send immediately that button was pressed
+          radio.write( payload,sizeof(payload) );
+        }
 
         // wait until PA3 goes high again (button released)
         uint64_t buttonStartTime = millis();
@@ -501,14 +522,16 @@ void loop() {
           payload[3] = 'L';
         }
 
-        radio.stopListening();          // set module as transmitter
-        radio.write( payload,sizeof(payload) );
+        if(config.getLongClickSupported()) {
+          radio.write( payload,sizeof(payload) );
+        }
+
         radio.txStandBy();
         radio.openReadingPipe(1, nRF24Addresses[1]);
         radio.startListening();   
 
-        // wait 500ms for debounce
-        for(uint16_t i=0; i<500; i++) {
+        // wait 400ms for debounce
+        for(uint16_t i=0; i<400; i++) {
           delayMicroseconds(1000);
         }
       }
@@ -518,17 +541,32 @@ void loop() {
     delayMicroseconds(5000);
   } // while loop
 
+  #ifdef ENABLE_SLEEP
+    if(wakeupSource == 1) {
+      while((PINB & _BV(PB0)) == 1) {
+        delayMicroseconds(1000);
+      }
+    }
+    if(wakeupSource == 2) {
+      while((PINB & _BV(PB3)) == 1) {
+        delayMicroseconds(1000);
+      }
+    }
+  #endif
+
   radio.stopListening();          // set module as transmitter
 
   payload[1] = 'L';
   payload[3] = '0';
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   payload[1] = 'M';
   payload[3] = '0';
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   radio.txStandBy();              // Wait for the transmission to complete
 
@@ -798,6 +836,13 @@ void reportConfiguration() {
   // send sleep period setting
   payload[1] = 'S';
   ultoa(config.getSleepPeriod(), payload+3, 10);
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(10000);
+
+  // send long click supported setting
+  payload[1] = 'B';
+  payload[3] = config.getLongClickSupported() ? '1' : '0';
+  payload[4] = 0;
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(10000);
 

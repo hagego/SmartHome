@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 5.0,
-          "height": 5.0,
-          "width": 5.0
+          "drill": 5.3,
+          "height": 5.3,
+          "width": 5.3
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -60,7 +60,19 @@
       ],
       "drc_exclusions": [
         [
-          "silk_over_copper|132656000|112684000|0a5859a0-e566-404f-bc7b-a9b2aafa935e|00000000-0000-0000-0000-000000000000",
+          "lib_footprint_mismatch|113500000|100500000|83d5ccf6-892b-4373-946a-ee75daf81d18|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "lib_footprint_mismatch|113500000|140500000|bbcdc188-45ca-4bda-b16d-2b733e6a2aa5|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "lib_footprint_mismatch|178500000|100500000|a6f76dcb-9083-46ea-bf89-c7ffa113ea38|00000000-0000-0000-0000-000000000000",
+          ""
+        ],
+        [
+          "lib_footprint_mismatch|178500000|140500000|fef0fcfa-106b-4f09-953c-c952ca1f279f|00000000-0000-0000-0000-000000000000",
           ""
         ]
       ],
@@ -194,7 +206,8 @@
       "track_widths": [
         0.0,
         0.3,
-        0.5
+        0.5,
+        0.7
       ],
       "tuning_pattern_settings": {
         "diff_pair_defaults": {

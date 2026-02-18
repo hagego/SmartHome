@@ -541,7 +541,7 @@ void loop() {
     delayMicroseconds(5000);
   } // while loop
 
-  #ifdef ENABLE_SLEEP
+  #ifdef MOTION_SENSOR
     if(wakeupSource == 1) {
       while((PINB & _BV(PB0)) == 1) {
         delayMicroseconds(1000);

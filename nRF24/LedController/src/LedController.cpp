@@ -49,9 +49,8 @@ const uint16_t POST_SEND_DELAY_US = 20000; // 20ms
 // threshold for long button press in ms
 const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
 
-// number of wakeups to skip for battery voltage measurement
-const uint8_t BATTERY_VOLTAGE_SKIP_WAKEUPS = 10;
-uint8_t batteryVoltageWakeupCounter = 0;
+// number of motion sensor wakeups to skip before enabling radio if illuminance is sufficient
+const uint8_t MOTION_SENSOR_WAKEUP_SKIP = 10;
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
@@ -88,7 +87,7 @@ void   enterSleep();                           // enter sleep mode
 #endif
 
 #ifdef ILLUMINANCE_SENSOR
-float  readAndSendIlluminance();               // read illuminance using BH1750 sensor and send via nRF24
+float  readIlluminance();               // read illuminance using BH1750 sensor and send via nRF24
 #endif
 
 #ifdef LED_TYPE_PWM
@@ -214,7 +213,11 @@ void setup() {
 
   #ifdef ILLUMINANCE_SENSOR
     // measure illuminance
-    readAndSendIlluminance();
+    float lux = readIlluminance();
+
+    payload[1] = 'I';
+    utoa((uint16_t)(lux), payload+3, 10);
+    radio.write( payload,sizeof(payload) );  // Send data
   #endif
 
   // measure battery voltage and send
@@ -249,15 +252,16 @@ void setup() {
   radio.txStandBy();                         // Wait for the transmission to complete
 }
 
-bool ledStripPatternEnabled = false;
-uint8_t wakeupSource = 0;                        // 0 = none, 1 = motion sensor 1, 2 = motion sensor 2, 3 = button input as motion sensor 3
-
+bool    ledStripPatternEnabled = false;
+uint8_t wakeupSource = 0;                     // 0 = none, 1 = motion sensor 1, 2 = motion sensor 2, 3 = button input as motion sensor 3
+uint8_t motionSensorWakeupCounter = 0;
 
 
 //
 // start LOOP
 //
 boolean gotoSleepAgain = false;
+boolean pinChangeInterruptTriggered = false;
 void loop() {
   #ifdef ENABLE_SLEEP
     wakeupSource = 0;
@@ -274,51 +278,28 @@ void loop() {
     if(!justStarted) {
 
       gotoSleepAgain = true;
+      pinChangeInterruptTriggered = false;
+      // sleep until woken up by motion sensor or watchdog timer, if woken up by watchdog timer go back to sleep until motion is detected or timeout is reached
       while(gotoSleepAgain ) {
         enterSleep();
       }
 
-      // power up radio after waking up
-      radio.powerUp();
-      delayMicroseconds(5000);                   // wait for radio to stabilize
-      radio.setRetries(5,15);                    // Max delay between retries & number of retries
-      radio.setPALevel(RF24_PA_MAX);             // Set power level to max
+      // waking up
     }
 
-    radio.stopListening(nRF24Addresses[0]);  // switch to writing on pipe 0
-
-    #ifdef ILLUMINANCE_SENSOR
-      // measure illuminance
-      float illuminance = readAndSendIlluminance();
-
-      #ifdef LED_TYPE_PWM
-        if(illuminance <= config.getIlluminanceThreshold()) {
-          // ambient light is insufficient, turn on LED
-          setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
-          PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
-        }
-      #endif
-    #endif
-
-    #ifdef ENV_SENSOR
-      // measure environmental data
-      readAndSendEnvironmentalData();
-    #endif
-
-    // send motion detected message
+    // check and store wakeup source
     wakeupSource = 0; 
-    payload[1] = 'M';
-    payload[3] = '0';
-    payload[4] = 0;
 
-    if((PINB & _BV(PB0)) == _BV(PB0)) {
-      payload[3] = '1';
-      wakeupSource = 1;
-    }
-    if((PINB & _BV(PB3)) == _BV(PB3)) {
-      payload[3] = '2';
-      wakeupSource = 2;
-    }
+    #ifdef MOTION_SENSOR
+      if((PINB & _BV(PB0)) == _BV(PB0)) {
+        wakeupSource = 1;
+        payload[3] = '1';
+      }
+      if((PINB & _BV(PB3)) == _BV(PB3)) {
+        wakeupSource = 2;
+        payload[3] = '2';
+      }
+    #endif
 
     #ifdef BUTTON
       // check if PA3 is low (as button input)
@@ -340,18 +321,66 @@ void loop() {
       }
     #endif // BUTTON
 
+    if(pinChangeInterruptTriggered && wakeupSource == 0) {
+      return; // motion sensor input pins changed back to low
+    }
+
+    float lux = 0.0;
+    #ifdef ILLUMINANCE_SENSOR
+      // measure illuminance
+      lux = readIlluminance();
+
+      #ifdef LED_TYPE_PWM
+        if(lux <= config.getIlluminanceThreshold()) {
+          // ambient light is insufficient, turn on LED
+          setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
+          PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
+        }
+      #endif
+
+      if((wakeupSource == 1 || wakeupSource==2) && (config.getIlluminanceThreshold()>0 && lux >= config.getIlluminanceThreshold())) {
+        // ambient light is sufficient, skip this wakeup and go back to sleep
+        motionSensorWakeupCounter++;
+        if(motionSensorWakeupCounter >= MOTION_SENSOR_WAKEUP_SKIP) {
+          // skip enough wakeups, reset counter and allow radio to be enabled
+          motionSensorWakeupCounter = 0;
+        }
+        else {
+          // skip this wakeup and go back to sleep
+          return;
+        }
+      }
+    #endif
+
+        // power up radio
+    radio.powerUp();
+    delayMicroseconds(5000);                   // wait for radio to stabilize
+    radio.setRetries(5,15);                    // Max delay between retries & number of retries
+    radio.setPALevel(RF24_PA_MAX);             // Set power level to max
+    radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
+
+    #ifdef ILLUMINANCE_SENSOR
+      payload[1] = 'I';
+      utoa((uint16_t)(lux), payload+3, 10);
+      radio.write( payload,sizeof(payload) );  // Send data
+    #endif
+
+    // send motion detected message
+    payload[1] = 'M';
+    payload[3] = '0'+wakeupSource;
+    payload[4] = 0;
+
     radio.write( payload,sizeof(payload) );
     delayMicroseconds(POST_SEND_DELAY_US);
 
     // measure battery voltage and send
-    if(batteryVoltageWakeupCounter >= BATTERY_VOLTAGE_SKIP_WAKEUPS) {
-      readAndSendBatteryVoltage();
-      delayMicroseconds(POST_SEND_DELAY_US);
-      batteryVoltageWakeupCounter = 0;
-    }
-    else {
-      batteryVoltageWakeupCounter++;
-    } 
+    readAndSendBatteryVoltage();
+    delayMicroseconds(POST_SEND_DELAY_US);
+
+    #ifdef ENV_SENSOR
+      // measure environmental data
+      readAndSendEnvironmentalData();
+    #endif
 
   #endif // ENABLE_SLEEP
 
@@ -453,22 +482,24 @@ void loop() {
           #endif
 
           #ifdef LED_TYPE_PWM
-          // command to set PWM value: "P:<value>" where <value> is 0-100
-          if(text[1]=='P') {
-            int pwmValue = parameter;
-            if(pwmValue <= 100) {
-              config.setPwmValue((uint8_t)pwmValue);
-              setPWMDutyCycle((uint8_t)pwmValue);
+            // command to set PWM value: "P:<value>" where <value> is 0-100
+            if(text[1]=='P') {
+              int pwmValue = parameter;
+              if(pwmValue <= 100) {
+                config.setPwmValue((uint8_t)pwmValue);
+                setPWMDutyCycle((uint8_t)pwmValue);
+              }
             }
-          }
+          #endif
 
-          // command to set illuminance threshold: "I:<value>" where <value> is in lux
-          if(text[1]=='I') {
-            int threshold = parameter;
-            if(threshold <= 255) {
-              config.setIlluminanceThreshold((uint8_t)threshold);
+          #ifdef ILLUMINANCE_SENSOR
+            // command to set illuminance threshold: "I:<value>" where <value> is in lux
+            if(text[1]=='I') {
+              int threshold = parameter;
+              if(threshold <= 255) {
+                config.setIlluminanceThreshold((uint8_t)threshold);
+              }
             }
-          }
           #endif
         }
       }
@@ -605,9 +636,11 @@ void enterSleep() {
 // ISR for motion sensor (pin change)
 ISR (PCINT0_vect) {  
   gotoSleepAgain = false;
+  pinChangeInterruptTriggered = true;
 }
 ISR (PCINT1_vect) {  
   gotoSleepAgain = false;
+  pinChangeInterruptTriggered = true;
 }
 
 // ISR for watchdog timer
@@ -774,7 +807,7 @@ void setPWMDutyCycle(uint8_t dutyCycle) {
  * read illuminance using BH1750 sensor via direct I2C communication
  * @return illuminance in lux
  */
-float readAndSendIlluminance() {
+float readIlluminance() {
   float lux = 0.0;
   
   BH1750 lightMeter(0x23);   // Address 0x23 is the default address of the sensor
@@ -788,10 +821,6 @@ float readAndSendIlluminance() {
     delayMicroseconds(50000U); // ensure enough time for measurement
     lux = lightMeter.readLightLevel();
   }
-
-  payload[1] = 'I';
-  utoa((uint16_t)(lux), payload+3, 10);
-  radio.write( payload,sizeof(payload) );  // Send data
 
   return lux;
 }
@@ -818,46 +847,40 @@ void reportConfiguration() {
   payload[1] = 'X';
   utoa((uint16_t)(config.getClientId()), payload+3, 10);
   radio.write( payload,sizeof(payload) );
-  delayMicroseconds(10000);
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   // send address byte
   payload[1] = 'A';
   payload[3] = (char)(config.getAddressByte());
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
-  delayMicroseconds(10000);
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   // send timeout setting
   payload[1] = 'T';
   utoa(config.getTimeout(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
-  delayMicroseconds(10000);
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   // send sleep period setting
   payload[1] = 'S';
   ultoa(config.getSleepPeriod(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
-  delayMicroseconds(10000);
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   // send long click supported setting
   payload[1] = 'B';
   payload[3] = config.getLongClickSupported() ? '1' : '0';
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
-  delayMicroseconds(10000);
+  delayMicroseconds(POST_SEND_DELAY_US);
 
   #ifdef LED_TYPE_PWM
     // send PWM value
     payload[1] = 'P';
     utoa((uint16_t)(config.getPwmValue()), payload+3, 10);
     radio.write( payload,sizeof(payload) );
-    delayMicroseconds(10000);
-
-    // send illuminance threshold
-    payload[1] = 'I';
-    utoa((uint16_t)(config.getIlluminanceThreshold()), payload+3, 10);
-    radio.write( payload,sizeof(payload) );
-    delayMicroseconds(10000);
+    delayMicroseconds(POST_SEND_DELAY_US);
   #endif
 
   #ifdef LED_TYPE_WS2812
@@ -865,6 +888,14 @@ void reportConfiguration() {
     payload[1] = 'N';
     utoa(config.getLedCount(), payload+3, 10);
     radio.write( payload,sizeof(payload) );
-    delayMicroseconds(10000);
+    delayMicroseconds(POST_SEND_DELAY_US);
+  #endif
+
+  #ifdef ILLUMINANCE_SENSOR
+    // send illuminance threshold
+    payload[1] = 'I';
+    utoa((uint16_t)(config.getIlluminanceThreshold()), payload+3, 10);
+    radio.write( payload,sizeof(payload) );
+    delayMicroseconds(POST_SEND_DELAY_US);
   #endif
 } 

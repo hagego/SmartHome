@@ -37,3 +37,5 @@ nRF24/PCBs/ProgrammingAdapter/ProgrammingAdapter-backups/*
 nRF24/PCBs/ProgrammingAdapter/fp-info-cache
 nRF24/PCBs/ServoController/fp-info-cache
 nRF24/PCBs/ServoController/ServoController-backups/*
+nRF24/PCBs/ESP2nRF24/ESP2nRF24/fp-info-cache
+nRF24/PCBs/ESP2nRF24/ESP2nRF24/ESP2nRF24-backups/*

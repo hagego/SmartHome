@@ -17,5 +17,6 @@ const char* topicPublishRssi           = MQTT_PREFIX "rssi";          // WIFi RS
 
 // MQTT subscription topics
 const char* topicSubscribeCommand      = MQTT_PREFIX "door";           // command to control the door
+const char* topicSubscribeFeedWatchdog = MQTT_PREFIX "watchdog";       // feed the watchdog to prevent reboot
 
 #endif

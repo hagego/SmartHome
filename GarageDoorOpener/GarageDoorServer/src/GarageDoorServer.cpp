@@ -23,6 +23,12 @@
 
 // speed of serial interface for debug messages
 #define SERIAL_SPEED 74880
+
+// time interval to send keepalive messages to MQTT broker (in milliseconds)
+u_int32_t KEEPALIVE_INTERVAL_MS = 600000UL; // 10 minutes
+
+// watchdog timer interval (in milliseconds)
+u_int32_t WATCHDOG_INTERVAL_MS = 4200000UL; // 70 minutes
  
 // global objects
 Adafruit_PN532           nfc(D4); // use HW SPI, pin D4 for CS
@@ -32,6 +38,9 @@ ESPAsyncHTTPUpdateServer updateServer;
 AsyncWebServer           webServer(80);
 char                     buffer[256];
 char                     fullMqttClientName[128];
+
+// last watchdog reset time (in milliseconds since start)
+u_int32_t lastWatchdogResetMillis = 0;
  
 void toggleRelay() {
   Serial.println("Toggling relay");
@@ -60,8 +69,10 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
       Serial.println(F(": unknown command - ignoring"));
     }
   }
-  else {
-    Serial.println(F(": unknown topic - ignoring"));
+
+  if(strcmp(topic,topicSubscribeFeedWatchdog)==0) {
+    Serial.println("Watchdog feed received - resetting timer");
+    lastWatchdogResetMillis = millis();
   }
 }
 
@@ -142,6 +153,7 @@ void setup() {
   Serial.println(F("MQTT connected"));
   // subscribe to topics
   mqttClient.subscribe(topicSubscribeCommand);
+  mqttClient.subscribe(topicSubscribeFeedWatchdog);
 
   // Once connected, publish an announcement...
   sprintf(buffer,"connected as %s",fullMqttClientName);
@@ -160,13 +172,16 @@ void setup() {
   updateServer.setup(&webServer);
 
   webServer.begin();
+
+  // initialize watchdog timer
+  lastWatchdogResetMillis = millis();
 }
  
 // Main loop
 u32_t keepAliveCounter = 0;                // use simple counter to send keepalive messages to MQTT broker roughly every half hour
 u_int8_t oldLocalMotionSensorState = 0;    // used to detect changes in local motion sensor state
 
-unsigned long lastPingMillis = 0;
+u_int32_t lastPingMillis = 0;
 void loop() {
   keepAliveCounter++;
 
@@ -259,14 +274,20 @@ void loop() {
     }
   }
 
-  // send ping every 5 minutes
+  // send ping
   unsigned long currentMillis = millis();
-  if(currentMillis<lastPingMillis || currentMillis-lastPingMillis >= 300000UL) {
+  if(currentMillis<lastPingMillis || currentMillis-lastPingMillis >= KEEPALIVE_INTERVAL_MS) {
     lastPingMillis = currentMillis;
 
     mqttClient.publish(topicPublishIsAlive, fullMqttClientName);
     sprintf(buffer,"%d",WiFi.RSSI());
     mqttClient.publish(topicPublishRssi, buffer);
+  }
+
+  // check if watchdog timer got expired
+  if(currentMillis<lastWatchdogResetMillis || currentMillis-lastWatchdogResetMillis >= WATCHDOG_INTERVAL_MS) {
+    Serial.println("Watchdog timer expired - rebooting...");
+    ESP.restart();
   }
 
   mqttClient.loop();

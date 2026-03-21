@@ -2711,6 +2711,82 @@
 	(dimension
 		(type orthogonal)
 		(layer "User.1")
+		(uuid "9b9c5e6b-659c-4464-990f-1ce971dfdc52")
+		(pts
+			(xy 211 65) (xy 211.2 107)
+		)
+		(height 13.4)
+		(orientation 1)
+		(format
+			(prefix "")
+			(suffix "")
+			(units 3)
+			(units_format 0)
+			(precision 4)
+			(suppress_zeroes yes)
+		)
+		(style
+			(thickness 0.1)
+			(arrow_length 1.27)
+			(text_position_mode 0)
+			(arrow_direction outward)
+			(extension_height 0.58642)
+			(extension_offset 0.5)
+			(keep_text_aligned yes)
+		)
+		(gr_text "42"
+			(at 223.25 86 90)
+			(layer "User.1")
+			(uuid "9b9c5e6b-659c-4464-990f-1ce971dfdc52")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+	)
+	(dimension
+		(type orthogonal)
+		(layer "User.1")
+		(uuid "a3739e50-15de-4912-bda8-113af817f555")
+		(pts
+			(xy 145 107) (xy 213 107)
+		)
+		(height 8.4)
+		(orientation 0)
+		(format
+			(prefix "")
+			(suffix "")
+			(units 3)
+			(units_format 0)
+			(precision 4)
+			(suppress_zeroes yes)
+		)
+		(style
+			(thickness 0.1)
+			(arrow_length 1.27)
+			(text_position_mode 0)
+			(arrow_direction outward)
+			(extension_height 0.58642)
+			(extension_offset 0.5)
+			(keep_text_aligned yes)
+		)
+		(gr_text "68"
+			(at 179 114.25 0)
+			(layer "User.1")
+			(uuid "a3739e50-15de-4912-bda8-113af817f555")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+	)
+	(dimension
+		(type orthogonal)
+		(layer "User.1")
 		(uuid "b6eed4d8-15ec-4045-bd7e-4df4476178f8")
 		(pts
 			(xy 209.5 103.5) (xy 213 103.5)
@@ -3380,7 +3456,7 @@
 		(net 0)
 		(net_name "")
 		(layers "F.Cu" "B.Cu")
-		(uuid "15c3c621-4ffb-44af-a013-2a10d3b64374")
+		(uuid "035790ab-7ba0-48fc-9ee7-1d21ea120195")
 		(hatch edge 0.5)
 		(connect_pads
 			(clearance 0.5)
@@ -3395,7 +3471,7 @@
 		)
 		(polygon
 			(pts
-				(xy 144.7 64.7) (xy 144.7 107.4) (xy 213.5 107.4) (xy 213.3 64.6) (xy 144.2 64.8)
+				(xy 144.5 64.4) (xy 144.5 107.6) (xy 213.7 107.5) (xy 213.4 64.3) (xy 144.1 64.6)
 			)
 		)
 		(filled_polygon

@@ -4,6 +4,14 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <EEPROM.h>
+
+#ifdef OTA_UPDATE
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPAsyncHTTPUpdateServer.h>
+#endif
+
 #include <PubSubClient.h>
 #include <SPI.h>
 #include <nRF24L01.h>
@@ -20,6 +28,17 @@
 #include "MessageBuffer.h"
 #include "Debug.h"
 
+#ifdef OTA_UPDATE
+
+ESPAsyncHTTPUpdateServer updateServer;
+AsyncWebServer           webServer(80);
+
+// page not found handler for HTTP update server
+void notFound(AsyncWebServerRequest *request) {
+  request->send(404, "text/plain", "Not found");
+}
+#endif
+
 
 // speed of serial interface for debug messages
 #define SERIAL_SPEED 74880
@@ -32,6 +51,10 @@ const uint8_t PIN_CSN = 0;  // D3 on D1 mini (GPIO0)
 const uint8_t PIN_BUTTON1 = 5;         // local button connected to I2C pins, D1 on D1 mini (GPIO5)
 const uint8_t PIN_BUTTON2 = 4;         // local button connected to I2C pins, D2 on D1 mini (GPIO4)
 const uint8_t PIN_MOTION_SENSOR = 16;  // local motion sensor pin, D0 on D1 mini (GPIO16)
+
+// EEPROM addresses
+const uint8_t EEPROM_SIZE             = (uint8_t)1;  // size in bytes
+const uint8_t EEPROM_ADDRESS_TX_POWER = (uint8_t)0;  // nRF24 transmission power level
 
 
 // nRF24 addresses to listen to
@@ -97,7 +120,9 @@ void setup() {
   Serial.begin(SERIAL_SPEED);
   delay(100);
   Serial.println();
-  Serial.println(F("nRF24 controller started"));
+  // RF24_ADDR_RECEIVE
+  sprintf(buffer,"nRF24 controller starting, listening on nRF24 address %s",nRF24Addresses[1]);
+  Serial.println(buffer);
  
   // Connect to WiFi network
   Serial.print(F("Connecting to SID "));
@@ -153,6 +178,8 @@ void setup() {
     sprintf(buffer,"connected as %s",mqttFullClientName);
     mqttClient.publish(MqttInfo::topicPublishConnected, buffer);
     mqttClient.publish(MqttInfo::topicPublishIsAlive, mqttFullClientName);
+
+
 
     // subscribe to topics
     registerMqttTopics();
@@ -216,6 +243,35 @@ void setup() {
     Serial.printf("status PIN2: %d\n", digitalRead(PIN_BUTTON2));
   #endif
 
+  #ifdef OTA_UPDATE
+  // setup the HTTP update server
+  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", "nRF24 Controller ready for updates. Use /update to upload new firmware.");
+  });
+
+
+  webServer.onNotFound(notFound);
+
+  //setup the updateServer with credentials
+  updateServer.setup(&webServer);
+
+  webServer.begin();
+  #endif
+
+    // initialize EEPROM
+  EEPROM.begin(EEPROM_SIZE);
+
+  // get RF24 transmission power level from EEPROM and set it
+  uint8_t txPowerLevel = EEPROM.read(EEPROM_ADDRESS_TX_POWER);
+  if(txPowerLevel>RF24_PA_MAX) {
+    txPowerLevel = RF24_PA_LOW;
+  }
+  Debug::log("nRF24 transmission power level read from EEPROM: %d", txPowerLevel);
+
+
+  sprintf(buffer,"%d",EEPROM.read(EEPROM_ADDRESS_TX_POWER));
+   mqttClient.publish(MqttInfo::topicPublishTxPowerLevel, buffer);
+
   // start nRF24 radio
   radio.begin();
  
@@ -227,7 +283,7 @@ void setup() {
   radio.enableAckPayload();       // Allow optional ack payloads
   radio.enableDynamicAck();       // Allow dynamic ACKs
   radio.setRetries(5,15);         // Max delay between retries & number of retries
-  radio.setPALevel(RF24_PA_MAX);  // Set power level to max
+  radio.setPALevel(txPowerLevel); // Set power level to max
   radio.setPayloadSize(nRF24PayloadSize);
   radio.startListening();         // set module as receiver
 
@@ -308,19 +364,19 @@ void loop() {
       mqttClient.publish(mqttTopicName, "connected");
     }
 
-    if(   text[1] == 'V' 
-       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorBattery);
+    // if(   text[1] == 'V' 
+    //    && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+    //   sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorBattery);
 
-      // some clients report battery voltage in mV, convert to V
-      float voltage = atof(text+3);
-      if(voltage>10) {
-        // assume mV
-        voltage = voltage / 1000.0;
-      }
-      sprintf(buffer,"%.1f",voltage);
-      mqttClient.publish(mqttTopicName, buffer);
-    }
+    //   // some clients report battery voltage in mV, convert to V
+    //   float voltage = atof(text+3);
+    //   if(voltage>10) {
+    //     // assume mV
+    //     voltage = voltage / 1000.0;
+    //   }
+    //   sprintf(buffer,"%.1f",voltage);
+    //   mqttClient.publish(mqttTopicName, buffer);
+    // }
 
     if(   text[1] == 'I' 
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
@@ -328,14 +384,14 @@ void loop() {
       mqttClient.publish(mqttTopicName, text+3);
     }
 
-    if(   text[1] == 'D' 
-       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorTemperature);
-      // temperature gets sent as integer * 10
-      float temperature = atof(text+3) / 10.0;
-      sprintf(buffer,"%.1f",temperature);
-      mqttClient.publish(mqttTopicName, buffer);
-    }
+    // if(   text[1] == 'D' 
+    //    && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+    //   sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorTemperature);
+    //   // temperature gets sent as integer * 10
+    //   float temperature = atof(text+3) / 10.0;
+    //   sprintf(buffer,"%.1f",temperature);
+    //   mqttClient.publish(mqttTopicName, buffer);
+    // }
 
     if(   text[1] == 'M' && text[3] != '0'
        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
@@ -348,6 +404,7 @@ void loop() {
     if(text[1] == 'L' && text[3] == '1') {
       // client is ready to receive commands
       Debug::log("Client %d is ready to receive commands",client_id);
+      delay(200); // delay to ensure client is ready
 
       MessageBuffer::Message message;
       if(client_id!=0 && messageBuffer.getMessage(client_id, &message)) {
@@ -410,7 +467,6 @@ void loop() {
     // send keepalive message to MQTT broker and read local sensor roughly every 5 minutes
     if(keepAliveCounter >= 3000UL) {
       keepAliveCounter = 0;
-      Debug::log("5min interval reached");
 
       #ifdef BSEC
       if (!envSensor.run()) {
@@ -424,7 +480,7 @@ void loop() {
     mqttClient.loop();
   }
 
-  delay(100);
+  delay(10);
 }
 
 // register MQTT topics
@@ -432,6 +488,7 @@ void registerMqttTopics() {
   // subscribe to topics
   mqttClient.subscribe(MqttInfo::topicSubscribeClientCommand); // + is nRF24 client ID suffix
   mqttClient.subscribe(MqttInfo::topicSubscribeEnableMqttDebug);
+  mqttClient.subscribe(MqttInfo::topicSubscribeSetTxPower);
 }
 
 // MQTT callback function
@@ -450,17 +507,17 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
   strncpy(payloadString,(char*)payload,length);
   payloadString[length] = 0;
 
-  Debug::log("MQTT callback: message [%s] value=%s",topicBuffer,payloadString);
+  Debug::log("MQTT callback: message [%s] value=%s wifiConnected=%d",topicBuffer,payloadString,wifiConnected);
 
   // check for enable/disable MQTT debug messages topic (only if connected to WIFI)
-  if(wifiConnected && strcmp(topic,MqttInfo::topicSubscribeEnableMqttDebug)==0) {
+  if(wifiConnected && strcmp(topicBuffer,MqttInfo::topicSubscribeEnableMqttDebug)==0) {
     if(payloadString[0]=='1') {
       Debug::enableMQTTDebug(true);
       Debug::log("MQTT debug messages enabled");
     }
     else if(payloadString[0]=='0') {
-      Debug::enableMQTTDebug(false);
       Debug::log("MQTT debug messages disabled");
+      Debug::enableMQTTDebug(false);
     }
 
     return;
@@ -477,6 +534,21 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
     sendNRF24Message(client_id, payloadString);
     return;
   }
+
+  // check for set transmission power topic
+  if(strcmp(topicBuffer,MqttInfo::topicSubscribeSetTxPower)==0) {
+    int txPowerLevel = atoi(payloadString);
+    if(txPowerLevel>=RF24_PA_MIN && txPowerLevel<=RF24_PA_MAX) {
+      radio.setPALevel(txPowerLevel);
+      EEPROM.write(EEPROM_ADDRESS_TX_POWER, txPowerLevel);
+      EEPROM.commit();
+      Debug::log("nRF24 transmission power level set to %d and stored in EEPROM", txPowerLevel);
+    }
+    else {
+      Debug::log("Invalid nRF24 transmission power level: %d. Valid range is %d - %d", txPowerLevel, RF24_PA_MIN, RF24_PA_MAX);
+    }
+  }
+
 }
 
 void sendNRF24Message(uint8_t client_id, const char* message) {
@@ -492,7 +564,7 @@ void sendNRF24Message(uint8_t client_id, const char* message) {
   if( client_id == 255 ) {
     // broadcast message - no ACK expected
     radio.write( writeBuffer, sizeof(writeBuffer),true );
-    Debug::log("Broadcast message sent");
+    Debug::log("Broadcast message sent on address %s",nRF24Addresses[0]);
   }
   else {
     if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
@@ -567,7 +639,7 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
           break;
       case BSEC_OUTPUT_CO2_EQUIVALENT:
           sprintf(buffer,"%.1f", output.signal);
-          Serial.print("\tCO2 Equivalent = ");Serial.println(buffer);
+          Serial.print("\tCO2 Equivalent = ");Serial.println(buffer);static const char* topicSubscribeTxPower;
           sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[0], MqttInfo::topicPublishSensorCo2);
           mqttClient.publish(mqttTopicName, buffer);
           break;

@@ -14,6 +14,7 @@ class MqttInfo {
         static const char* topicPublishIsAlive;
         static const char* topicPublishDebugMessage;
         static const char* topicPublishClientMessage;
+        static const char* topicPublishTxPowerLevel;
 
         // array to map of RF24 client IDs to MQTT prefixes
         static const int   NUM_CLIENT_PREFIXES = 5;
@@ -34,6 +35,7 @@ class MqttInfo {
         // MQTT subscription topics
         static const char* topicSubscribeEnableMqttDebug;
         static const char* topicSubscribeClientCommand;
+        static const char* topicSubscribeSetTxPower;
 };
 
 #endif

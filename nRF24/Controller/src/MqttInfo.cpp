@@ -5,10 +5,12 @@ const char* MqttInfo::topicPublishConnected       = MQTT_PREFIX "connected";    
 const char* MqttInfo::topicPublishIsAlive         = MQTT_PREFIX "isAlive";          // gets published right after connect
 const char* MqttInfo::topicPublishDebugMessage    = MQTT_PREFIX "debugMessage";     // debug messages (if enabled)
 const char* MqttInfo::topicPublishClientMessage   = "nRF24Client/clientMessage";    // message from nRF24 clients
+const char* MqttInfo::topicPublishTxPowerLevel    = MQTT_PREFIX "txPowerLevel";     // nRF24 transmission power level
 
 // MQTT subscription topics related to controller
 const char* MqttInfo::topicSubscribeEnableMqttDebug = MQTT_PREFIX "enableMqttDebug";  // enable or disable debug messages (payload "1" or "0")
 const char* MqttInfo::topicSubscribeClientCommand   = MQTT_PREFIX "clientCommand/+";  // command to send to a nRF24 client, suffix is the client ID
+const char* MqttInfo::topicSubscribeSetTxPower      = MQTT_PREFIX "setTxPowerLevel";  // set nRF24 transmission power level (payload: 0-3)
 
 // MQTT subscription topics related to sensors
 const char* MqttInfo::topicPublishSensorConnected       = "connected";      // sensor connected

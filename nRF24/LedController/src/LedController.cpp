@@ -104,6 +104,10 @@ void   stepLedStripPattern();                   // step thru LED strip pattern
 void readAndSendEnvironmentalData();
 #endif
 
+#ifdef SERVO
+void positionServo(uint16_t pulseWidthStart,uint16_t pulseWidthEnd); // move servo to specified position
+#endif
+
 
 boolean justStarted = true;
 void setup() {
@@ -196,7 +200,7 @@ void setup() {
   radio.enableAckPayload();                  // enable payloads within ACK packets
   radio.setRetries(5,15);                    // Max delay between retries & number of retries
   radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
-  radio.setPALevel(RF24_PA_MAX);             // Set power level to max
+  radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());      // Set power level
   radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
 
   // initialize ADC for battery voltage measurement
@@ -264,7 +268,6 @@ boolean gotoSleepAgain = false;
 boolean pinChangeInterruptTriggered = false;
 void loop() {
   #ifdef ENABLE_SLEEP
-    wakeupSource = 0;
     if(!justStarted) {
       radio.powerDown();                         // Power down the radio
     }
@@ -304,9 +307,8 @@ void loop() {
     #ifdef BUTTON
       // check if PA3 is low (as button input)
       if((PINA & _BV(PA3)) == 0) {
-      payload[3] = '3';
-      wakeupSource = 3;
-
+        payload[3] = '3';
+        wakeupSource = 3;
       
         // wait until PA3 goes high again (button released)
         uint64_t buttonStartTime = millis();
@@ -356,7 +358,7 @@ void loop() {
     radio.powerUp();
     delayMicroseconds(5000);                   // wait for radio to stabilize
     radio.setRetries(5,15);                    // Max delay between retries & number of retries
-    radio.setPALevel(RF24_PA_MAX);             // Set power level to max
+    radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());    // Set power level
     radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
 
     #ifdef ILLUMINANCE_SENSOR
@@ -366,16 +368,19 @@ void loop() {
     #endif
 
     // send motion detected message
-    payload[1] = 'M';
-    payload[3] = '0'+wakeupSource;
-    payload[4] = 0;
+    if(wakeupSource!=0) {
+      payload[1] = 'M';
+      payload[3] = '0'+wakeupSource;
+      payload[4] = 0;
 
-    radio.write( payload,sizeof(payload) );
-    delayMicroseconds(POST_SEND_DELAY_US);
-
-    // measure battery voltage and send
-    readAndSendBatteryVoltage();
-    delayMicroseconds(POST_SEND_DELAY_US);
+      radio.write( payload,sizeof(payload) );
+      delayMicroseconds(POST_SEND_DELAY_US);
+    }
+    else {
+      // measure battery voltage and send
+      readAndSendBatteryVoltage();
+      delayMicroseconds(POST_SEND_DELAY_US);
+    }
 
     #ifdef ENV_SENSOR
       // measure environmental data
@@ -471,6 +476,15 @@ void loop() {
             config.setSleepPeriod((uint16_t)parameter);
           }
 
+          // command to set nRF24 TX power level: "W:<value>" where <value> is 0-3
+          if(text[1]=='W') {
+            uint8_t txPowerLevel = (uint8_t)parameter;
+            if(txPowerLevel <= 3) {
+              config.setTxPowerLevel(txPowerLevel);
+              radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());
+            }
+          }
+
           #ifdef BUTTON
             // command to set if long button click is supported: "L:<value>" where <value> is 0 or 1
             if(text[1]=='B' ) {
@@ -489,6 +503,36 @@ void loop() {
                 config.setPwmValue((uint8_t)pwmValue);
                 setPWMDutyCycle((uint8_t)pwmValue);
               }
+            }
+          #endif
+
+          #ifdef SERVO
+            if(text[1]=='P') {
+              radio.stopListening();          // set module as transmitter
+
+              payload[1] = 'P';
+              payload[2] = ':';
+              utoa((uint16_t)parameter, payload+3, 10);
+              radio.write( payload,sizeof(payload) );
+              delayMicroseconds(POST_SEND_DELAY_US);
+
+              char* p = strchr(text+3, ':');
+              if(p!=NULL) {
+                uint16_t parameter2 = (uint16_t)atol(p + 1);
+
+                positionServo(1000, 2000);
+                positionServo(2000, 1000);
+
+                utoa((uint16_t)parameter2, payload+3, 10);
+                radio.write( payload,sizeof(payload) );
+                delayMicroseconds(POST_SEND_DELAY_US);
+              }
+
+              radio.txStandBy();
+
+              // return to listening mode
+              radio.openReadingPipe(1, nRF24Addresses[1]);
+              radio.startListening(); 
             }
           #endif
 
@@ -569,7 +613,7 @@ void loop() {
 
     #endif // BUTTON
 
-    delayMicroseconds(5000);
+    delayMicroseconds(1000);
   } // while loop
 
   #ifdef MOTION_SENSOR
@@ -588,12 +632,6 @@ void loop() {
   radio.stopListening();          // set module as transmitter
 
   payload[1] = 'L';
-  payload[3] = '0';
-  payload[4] = 0;
-  radio.write( payload,sizeof(payload) );
-  delayMicroseconds(POST_SEND_DELAY_US);
-
-  payload[1] = 'M';
   payload[3] = '0';
   payload[4] = 0;
   radio.write( payload,sizeof(payload) );
@@ -868,6 +906,13 @@ void reportConfiguration() {
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(POST_SEND_DELAY_US);
 
+  // send TX power level
+  payload[1] = 'W';
+  payload[3] = '0' + config.getTxPowerLevel();
+  payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(POST_SEND_DELAY_US);
+
   // send long click supported setting
   payload[1] = 'B';
   payload[3] = config.getLongClickSupported() ? '1' : '0';
@@ -899,3 +944,35 @@ void reportConfiguration() {
     delayMicroseconds(POST_SEND_DELAY_US);
   #endif
 } 
+
+#ifdef SERVO
+void positionServo(uint16_t pulseWidthStart,uint16_t pulseWidthEnd) {
+  DDRA |= (1<<PA7);
+
+  uint16_t period     = 20000UL; // 20ms period for standard servos
+  
+  uint16_t pulsewidth = pulseWidthStart;
+  uint16_t stepsize   = 10;
+
+  if(pulseWidthEnd > pulseWidthStart) {
+    while( pulsewidth<pulseWidthEnd ) {
+      pulsewidth+=stepsize;
+
+      PORTA |= (1<<PA7);
+      delayMicroseconds( pulsewidth );
+      PORTA &= ~(1<<PA7);
+      delayMicroseconds( period-pulsewidth );
+    }
+  }
+  else {
+     while( pulsewidth>pulseWidthEnd ) {
+      pulsewidth-=stepsize;
+
+      PORTA |= (1<<PA7);
+      delayMicroseconds( pulsewidth );
+      PORTA &= ~(1<<PA7);
+      delayMicroseconds( period-pulsewidth );
+    }
+  }
+ }
+#endif

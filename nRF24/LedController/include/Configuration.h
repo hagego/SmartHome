@@ -47,6 +47,10 @@ class Configuration {
     uint8_t  getLongClickSupported();
     void     setLongClickSupported(uint8_t longClickSupported);
 
+    // gets/sets nRF24 TX power level
+    uint8_t  getTxPowerLevel();
+    void     setTxPowerLevel(uint8_t txPowerLevel);
+
   private:
   
     // data members
@@ -58,6 +62,7 @@ class Configuration {
     uint8_t  addressByte;
     uint16_t sleepPeriod;
     uint8_t  longClickSupported;
+    uint8_t  txPowerLevel;
 
     // addresses
     static const uint8_t ADDRESS_IS_INITIALIZED = 0;  // stores a magic number if initialized
@@ -69,6 +74,8 @@ class Configuration {
     static const uint8_t ADDRESS_ADDRESS_BYTE   = 7;  // 1st byte of nRF24 send pipe (pipe 0) (1 byte)
     static const uint8_t ADDRESS_SLEEP_PERIOD   = 8;  // sleep period in seconds (2 byte)
     static const uint8_t ADDRESS_LONG_CLICK     = 9;  // button long click supported ? (1 byte)
+    static const uint8_t ADDRESS_TX_POWER_LEVEL = 10; // nRF24 TX power level (1 byte)
+
 
     // magic number to check if EEPROM has been initialized with default data
     static const uint8_t MAGIC_NUMBER           = 42;

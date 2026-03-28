@@ -1,5 +1,6 @@
 #include "Configuration.h"
 
+static uint8_t  ADDRESS_BYTE_DEFAULT = 'p';
 
 Configuration::Configuration()
 {
@@ -9,9 +10,10 @@ Configuration::Configuration()
     pwmValue = 10;              // default PWM value 100%
     illuminanceThreshold = 20;  // default illuminance threshold 20 lux
     ledCount = 0;               // default LED count 0
-    addressByte = 'p';          // default address byte 'p'
+    addressByte = ADDRESS_BYTE_DEFAULT;          // default address byte 'o'
     sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
     longClickSupported = 0;     // default: button long click not supported
+    txPowerLevel = 2;           // default TX power level 2
 }
 
 void Configuration::init()
@@ -25,9 +27,10 @@ void Configuration::init()
         pwmValue = 10;              // default PWM value 100%
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
-        addressByte = 'p';          // default address byte 0
+        addressByte = ADDRESS_BYTE_DEFAULT;          // default address byte 'o'
         sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
         longClickSupported = 0;     // default: button long click not supported
+        txPowerLevel = 2;           // default TX power level 2
 
         // write defaults to EEPROM
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
@@ -39,6 +42,7 @@ void Configuration::init()
         writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
         writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
         writeByteToEEPROM(ADDRESS_LONG_CLICK, longClickSupported);
+        writeByteToEEPROM(ADDRESS_TX_POWER_LEVEL, txPowerLevel);
     } else {
         // read values from EEPROM
         clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
@@ -49,12 +53,18 @@ void Configuration::init()
         addressByte          = readByteFromEEPROM(ADDRESS_ADDRESS_BYTE);
         sleepPeriod          = readWordFromEEPROM(ADDRESS_SLEEP_PERIOD);
         longClickSupported   = readByteFromEEPROM(ADDRESS_LONG_CLICK);
-
-        if(addressByte != 'e' && addressByte != 'o' && addressByte != 'p' ) {
+        txPowerLevel         = readByteFromEEPROM(ADDRESS_TX_POWER_LEVEL);
+        if(addressByte != 'e' && addressByte != 'o' && addressByte != 'u' && addressByte != 'p' ) {
           // invalid address byte, reset to default
-          addressByte = 'p';
+          addressByte = ADDRESS_BYTE_DEFAULT;
           writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
         }
+    }
+
+    // ensure valid RF TX power level
+    if(txPowerLevel > 3) {
+      txPowerLevel = 2; // reset to default
+      writeByteToEEPROM(ADDRESS_TX_POWER_LEVEL, txPowerLevel);
     }
 }
 
@@ -138,6 +148,16 @@ void Configuration::setLongClickSupported(uint8_t longClickSupported)
     this->longClickSupported = longClickSupported;
     writeByteToEEPROM(ADDRESS_LONG_CLICK, longClickSupported);
 }   
+
+uint8_t Configuration::getTxPowerLevel()
+{
+    return txPowerLevel;
+}
+void Configuration::setTxPowerLevel(uint8_t txPowerLevel)
+{
+    this->txPowerLevel = txPowerLevel;
+    writeByteToEEPROM(ADDRESS_TX_POWER_LEVEL, txPowerLevel);
+}
 
 
 uint8_t  Configuration::readByteFromEEPROM(uint8_t address)

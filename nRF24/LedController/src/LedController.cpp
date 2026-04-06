@@ -44,7 +44,7 @@
 
 
 // wait time after sending data in microseconds
-const uint16_t POST_SEND_DELAY_US = 20000; // 20ms
+const uint16_t POST_SEND_DELAY_US = 30000; // 30ms
 
 // threshold for long button press in ms
 const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
@@ -195,7 +195,7 @@ void setup() {
   radio.stopListening();                     // set module as transmitter
   radio.setAutoAck(1);                       // Ensure autoACK is enabled
   radio.enableAckPayload();                  // enable payloads within ACK packets
-  radio.setRetries(5,15);                    // Max delay between retries & number of retries
+  radio.setRetries(5,20);                    // Max delay between retries & number of retries
   radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
   radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());      // Set power level
   radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
@@ -348,11 +348,11 @@ void loop() {
 
         // power up radio
     radio.powerUp();
-    delayMicroseconds(5000);                   // wait for radio to stabilize
-    radio.setRetries(5,15);                    // Max delay between retries & number of retries
+    delayMicroseconds(POST_SEND_DELAY_US);     // wait for radio to stabilize
+    radio.setRetries(5,20);                    // Max delay between retries & number of retries
     radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());    // Set power level
     radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0 
-    delayMicroseconds(50000);                  // wait 50ms to settle current after powering up radio
+    delayMicroseconds(POST_SEND_DELAY_US);     // wait to settle current after switching to transmitter mode
 
     #ifdef ILLUMINANCE_SENSOR
       payload[1] = 'I';

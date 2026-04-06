@@ -246,7 +246,7 @@ void setup() {
   #ifdef OTA_UPDATE
   // setup the HTTP update server
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", "nRF24 Controller ready for updates. Use /update to upload new firmware.");
+    request->send(200, "text/plain", MQTT_CLIENT_ID " ready for updates. Use /update to upload new firmware.");
   });
 
 
@@ -357,22 +357,11 @@ void loop() {
       sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
       mqttClient.publish(buffer, text+3);
 
-      // if( text[1]=='C' || (text[1]=='L') && (text[3]=='1') ) {
-      //   sprintf(buffer,"%s/%d/controller",MqttInfo::topicPublishClientMessage,client_id);
-      //   mqttClient.publish(buffer, MQTT_CLIENT_ID);
-      // }
-      
       if(   text[1] == 'C' && text[3] == '1'
         && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
         // client connected
         sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorConnected);
         mqttClient.publish(mqttTopicName, "connected");
-      }
-
-      if(   text[1] == 'I' 
-        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-        sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorIlluminance);
-        mqttClient.publish(mqttTopicName, text+3);
       }
 
       if(   text[1] == 'M' && text[3] != '0'
@@ -446,8 +435,8 @@ void loop() {
   #endif
   
   if(wifiConnected) {
-    // send keepalive message to MQTT broker and read local sensor roughly every 5 minutes
-    if(keepAliveCounter >= 3000UL) {
+    // send keepalive message to MQTT broker and read local sensor roughly every 10 minutes
+    if(keepAliveCounter >= 120000UL) {
       keepAliveCounter = 0;
 
       #ifdef BSEC
@@ -462,7 +451,7 @@ void loop() {
     mqttClient.loop();
   }
 
-  delay(10);
+  delay(5);
 }
 
 // register MQTT topics

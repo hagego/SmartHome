@@ -346,89 +346,71 @@ void loop() {
     radio.read(&text, sizeof(text));
     // first byte is client ID
     uint8_t client_id = text[0];
-    Debug::log("Payload received on address %d, client %d: %s",pipe,client_id,text+1);
-
-    // MqttInfo::topicPublishClientMessage
-    sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
-    mqttClient.publish(buffer, text+3);
-
-    if( text[1]=='C' || (text[1]=='L') && (text[3]=='1') ) {
-      sprintf(buffer,"%s/%d/controller",MqttInfo::topicPublishClientMessage,client_id);
-      mqttClient.publish(buffer, MQTT_CLIENT_ID);
+    if(strlen(text+1)>=sizeof(text)) {
+      // ensure null termination of text
+      text[sizeof(text)-1] = 0;
     }
-    
-    if(   text[1] == 'C' && text[3] == '1'
-       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-      // client connected
-      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorConnected);
-      mqttClient.publish(mqttTopicName, "connected");
-    }
+    Debug::log("Payload received on address %d, client %d: >>%s<<",pipe,client_id,text+1);
 
-    // if(   text[1] == 'V' 
-    //    && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-    //   sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorBattery);
+    if(text[1]!=0) {
+      // MqttInfo::topicPublishClientMessage
+      sprintf(buffer,"%s/%d/%c",MqttInfo::topicPublishClientMessage,client_id,text[1]);
+      mqttClient.publish(buffer, text+3);
 
-    //   // some clients report battery voltage in mV, convert to V
-    //   float voltage = atof(text+3);
-    //   if(voltage>10) {
-    //     // assume mV
-    //     voltage = voltage / 1000.0;
-    //   }
-    //   sprintf(buffer,"%.1f",voltage);
-    //   mqttClient.publish(mqttTopicName, buffer);
-    // }
+      // if( text[1]=='C' || (text[1]=='L') && (text[3]=='1') ) {
+      //   sprintf(buffer,"%s/%d/controller",MqttInfo::topicPublishClientMessage,client_id);
+      //   mqttClient.publish(buffer, MQTT_CLIENT_ID);
+      // }
+      
+      if(   text[1] == 'C' && text[3] == '1'
+        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+        // client connected
+        sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorConnected);
+        mqttClient.publish(mqttTopicName, "connected");
+      }
 
-    if(   text[1] == 'I' 
-       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorIlluminance);
-      mqttClient.publish(mqttTopicName, text+3);
-    }
+      if(   text[1] == 'I' 
+        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+        sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorIlluminance);
+        mqttClient.publish(mqttTopicName, text+3);
+      }
 
-    // if(   text[1] == 'D' 
-    //    && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-    //   sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorTemperature);
-    //   // temperature gets sent as integer * 10
-    //   float temperature = atof(text+3) / 10.0;
-    //   sprintf(buffer,"%.1f",temperature);
-    //   mqttClient.publish(mqttTopicName, buffer);
-    // }
+      if(   text[1] == 'M' && text[3] != '0'
+        && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
+        // client connected
+        sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorMotionDetected);
+        sprintf(buffer,"on#%c",text[3]);
+        mqttClient.publish(mqttTopicName, buffer);
+      }
 
-    if(   text[1] == 'M' && text[3] != '0'
-       && client_id < MqttInfo::NUM_CLIENT_PREFIXES && strlen(MqttInfo::mqttPrefixForClientId[client_id])>0) {
-      // client connected
-      sprintf(mqttTopicName, "%s%s", MqttInfo::mqttPrefixForClientId[client_id], MqttInfo::topicPublishSensorMotionDetected);
-      sprintf(buffer,"on#%c",text[3]);
-      mqttClient.publish(mqttTopicName, buffer);
-    }
+      if(text[1] == 'L' && text[3] == '1') {
+        // client is ready to receive commands
+        Debug::log("Client %d is ready to receive commands",client_id);
+        delay(200); // delay to ensure client is ready
 
-    if(text[1] == 'L' && text[3] == '1') {
-      // client is ready to receive commands
-      Debug::log("Client %d is ready to receive commands",client_id);
-      delay(200); // delay to ensure client is ready
+        MessageBuffer::Message message;
+        if(client_id!=0 && messageBuffer.getMessage(client_id, &message)) {
+          radio.stopListening();          // set module as transmitter
+          radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
+          delay(100); // delay to settle current before sending message
+          Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,message.content);
 
-      MessageBuffer::Message message;
-      if(client_id!=0 && messageBuffer.getMessage(client_id, &message)) {
-        radio.stopListening();          // set module as transmitter
-        radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
+          char writeBuffer[nRF24PayloadSize] = {0};
+          writeBuffer[0] = client_id;
+          strncpy(writeBuffer+1, message.content, sizeof(writeBuffer)-2);
+          if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
+            // delete message from buffer
+            Debug::log("Message acknowledged by client %d, deleting from buffer",client_id);
+            messageBuffer.deleteMessage(&message);
+          }
 
-        Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,message.content);
+          // listen to address 1 only
+          radio.openReadingPipe(1, nRF24Addresses[1]);
 
-        char writeBuffer[nRF24PayloadSize] = {0};
-        writeBuffer[0] = client_id;
-        strncpy(writeBuffer+1, message.content, sizeof(writeBuffer)-2);
-        if( radio.write( writeBuffer, sizeof(writeBuffer) ) ) {
-          // delete message from buffer
-          Debug::log("Message acknowledged by client %d, deleting from buffer",client_id);
-          messageBuffer.deleteMessage(&message);
-        }
-
-        // listen to address 1 only
-        radio.openReadingPipe(1, nRF24Addresses[1]);
-
-        radio.startListening();                   // set module as receiver again
-      } // message was sent
-    } // client is listening
-  
+          radio.startListening();                   // set module as receiver again
+        } // message was sent
+      } // client is listening
+    } // if(text[1]!=0)
   } // message was received
 
 
@@ -509,7 +491,7 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
 
   Debug::log("MQTT callback: message [%s] value=%s wifiConnected=%d",topicBuffer,payloadString,wifiConnected);
 
-  // check for enable/disable MQTT debug messages topic (only if connected to WIFI)
+  // check for enable/disable MQTT debu1g messages topic (only if connected to WIFI)
   if(wifiConnected && strcmp(topicBuffer,MqttInfo::topicSubscribeEnableMqttDebug)==0) {
     if(payloadString[0]=='1') {
       Debug::enableMQTTDebug(true);
@@ -552,8 +534,9 @@ void mqttCallback(const char topic[], byte* payload, unsigned int length) {
 }
 
 void sendNRF24Message(uint8_t client_id, const char* message) {
-  radio.stopListening();                    // set module as transmitter
-  radio.openWritingPipe(nRF24Addresses[0]); // Write to device address
+  radio.stopListening();                     // set module as transmitter
+  radio.openWritingPipe(nRF24Addresses[0]);  // Write to device address
+  delay(100);                                // delay to settle current before sending message
 
   Debug::log("Sending message on address %s, client %d: %s",nRF24Addresses[0],client_id,message);
 

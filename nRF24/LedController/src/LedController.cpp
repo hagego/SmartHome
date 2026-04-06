@@ -49,9 +49,6 @@ const uint16_t POST_SEND_DELAY_US = 20000; // 20ms
 // threshold for long button press in ms
 const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
 
-// number of motion sensor wakeups to skip before enabling radio if illuminance is sufficient
-const uint8_t MOTION_SENSOR_WAKEUP_SKIP = 10;
-
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
 const double R_GND = 100000.0;  // sense point to GND 100k
@@ -105,7 +102,7 @@ void readAndSendEnvironmentalData();
 #endif
 
 #ifdef SERVO
-void positionServo(uint16_t pulseWidthStart,uint16_t pulseWidthEnd); // move servo to specified position
+void positionServo(uint16_t pulseWidth); // move servo to specified position
 #endif
 
 
@@ -154,7 +151,7 @@ void setup() {
   DDRA  |=  _BV(PA6);            // pin  7: Set PA6 as output: SPI MOSI for nRF24LO1
   DDRA  &= ~_BV(PA5);            // pin  8: Set PA5 as input: SPI MISO for nRF24LO1
   DDRA  |=  _BV(PA4);            // pin  9:Conn_01x03 Set PA4 as output: SPI SCK for nRF24LO1
-  #if defined(LED_TYPE_PWM) || defined(LED_TYPE_WS2812)
+  #if defined(LED_TYPE_PWM) || defined(LED_TYPE_WS2812) || defined(SERVO)
   DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
   PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver => LED off
   #else
@@ -202,6 +199,8 @@ void setup() {
   radio.setPayloadSize(nRF24PayloadSize);    // Set payload size to 16 bytes
   radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());      // Set power level
   radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
+
+  delayMicroseconds(50000);                  // wait 50ms to settle current after powering up radio
 
   // initialize ADC for battery voltage measurement
   initAdc();
@@ -258,7 +257,6 @@ void setup() {
 
 bool    ledStripPatternEnabled = false;
 uint8_t wakeupSource = 0;                     // 0 = none, 1 = motion sensor 1, 2 = motion sensor 2, 3 = button input as motion sensor 3
-uint8_t motionSensorWakeupCounter = 0;
 
 
 //
@@ -307,30 +305,32 @@ void loop() {
     #ifdef BUTTON
       // check if PA3 is low (as button input)
       if((PINA & _BV(PA3)) == 0) {
-        payload[3] = '3';
         wakeupSource = 3;
       
-        // wait until PA3 goes high again (button released)
-        uint64_t buttonStartTime = millis();
-        while((PINA & _BV(PA3)) == 0) {
-          delayMicroseconds(1000);
-        }
-        uint64_t buttonPressDuration = millis() - buttonStartTime;
-        if(buttonPressDuration > LONG_PRESS_THRESHOLD_MS) {
-          // long press detected, set wakeup source to 0 to ignore motion sensor 3 for now
-          payload[3] = 'L';
+        if(config.getLongClickSupported()) {
+          // wait until PA3 goes high again (button released)
+          uint64_t buttonStartTime = millis();
+          while((PINA & _BV(PA3)) == 0) {
+            delayMicroseconds(1000);
+          }
+          uint64_t buttonPressDuration = millis() - buttonStartTime;
+          if(buttonPressDuration > LONG_PRESS_THRESHOLD_MS) {
+            // long press detected
+            wakeupSource = 4;
+          }
         }
       }
     #endif // BUTTON
 
-    if(pinChangeInterruptTriggered && wakeupSource == 0) {
-      return; // motion sensor input pins changed back to low
-    }
+    #ifdef MOTION_SENSOR
+      if(pinChangeInterruptTriggered && wakeupSource == 0) {
+        return; // motion sensor input pins changed back to low
+      }
+    #endif
 
-    float lux = 0.0;
     #ifdef ILLUMINANCE_SENSOR
       // measure illuminance
-      lux = readIlluminance();
+      float lux = readIlluminance();
 
       #ifdef LED_TYPE_PWM
         if(lux <= config.getIlluminanceThreshold()) {
@@ -341,16 +341,8 @@ void loop() {
       #endif
 
       if((wakeupSource == 1 || wakeupSource==2) && (config.getIlluminanceThreshold()>0 && lux >= config.getIlluminanceThreshold())) {
-        // ambient light is sufficient, skip this wakeup and go back to sleep
-        motionSensorWakeupCounter++;
-        if(motionSensorWakeupCounter >= MOTION_SENSOR_WAKEUP_SKIP) {
-          // skip enough wakeups, reset counter and allow radio to be enabled
-          motionSensorWakeupCounter = 0;
-        }
-        else {
-          // skip this wakeup and go back to sleep
-          return;
-        }
+        // ambient light is sufficient go back to sleep
+        return;
       }
     #endif
 
@@ -359,7 +351,8 @@ void loop() {
     delayMicroseconds(5000);                   // wait for radio to stabilize
     radio.setRetries(5,15);                    // Max delay between retries & number of retries
     radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());    // Set power level
-    radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0
+    radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0 
+    delayMicroseconds(50000);                  // wait 50ms to settle current after powering up radio
 
     #ifdef ILLUMINANCE_SENSOR
       payload[1] = 'I';
@@ -369,15 +362,17 @@ void loop() {
 
     // send motion detected message
     if(wakeupSource!=0) {
-      payload[1] = 'M';
-      payload[3] = '0'+wakeupSource;
-      payload[4] = 0;
+      #if defined(MOTION_SENSOR) || defined(BUTTON)
+        payload[1] = 'M';
+        payload[3] = '0'+wakeupSource;
+        payload[4] = 0;
 
-      radio.write( payload,sizeof(payload) );
-      delayMicroseconds(POST_SEND_DELAY_US);
+        radio.write( payload,sizeof(payload) );
+        delayMicroseconds(POST_SEND_DELAY_US);
+      #endif
     }
     else {
-      // measure battery voltage and send
+      // periodic wakeup. Measure battery voltage and send
       readAndSendBatteryVoltage();
       delayMicroseconds(POST_SEND_DELAY_US);
     }
@@ -401,7 +396,12 @@ void loop() {
   delayMicroseconds(POST_SEND_DELAY_US);
   radio.txStandBy();              // Wait for the transmission to complete
   
-
+  #ifdef BUTTON
+    //ensure PA3 goes high again (button released)
+    while((PINA & _BV(PA3)) == 0) {
+      delayMicroseconds(1000);
+    }
+  #endif
   // Now set the module as receiver and wait for commands
   radio.openReadingPipe(1, nRF24Addresses[1]);
   radio.startListening();
@@ -430,14 +430,11 @@ void loop() {
 
       // process commands
 
-      // command to switch off: "O"
-      if(text[1]=='O') {
-        exitCondition = true;
-      }
-
       // command to trigger a report of current configuration: "R"
       if(text[1]=='R') {
         radio.stopListening();          // set module as transmitter
+        delayMicroseconds(50000);       // wait 50ms to settle current after powering up radio
+
         reportConfiguration();
         radio.txStandBy();
 
@@ -507,26 +504,18 @@ void loop() {
           #endif
 
           #ifdef SERVO
+          // servo position from command: "P:<value>" where <value> is pulse width in microseconds
             if(text[1]=='P') {
               radio.stopListening();          // set module as transmitter
-
               payload[1] = 'P';
               payload[2] = ':';
+
+              positionServo(parameter); // move servo to specified position
+
+              // send end position back as confirmation
               utoa((uint16_t)parameter, payload+3, 10);
               radio.write( payload,sizeof(payload) );
               delayMicroseconds(POST_SEND_DELAY_US);
-
-              char* p = strchr(text+3, ':');
-              if(p!=NULL) {
-                uint16_t parameter2 = (uint16_t)atol(p + 1);
-
-                positionServo(1000, 2000);
-                positionServo(2000, 1000);
-
-                utoa((uint16_t)parameter2, payload+3, 10);
-                radio.write( payload,sizeof(payload) );
-                delayMicroseconds(POST_SEND_DELAY_US);
-              }
 
               radio.txStandBy();
 
@@ -638,8 +627,6 @@ void loop() {
   delayMicroseconds(POST_SEND_DELAY_US);
 
   radio.txStandBy();              // Wait for the transmission to complete
-
-  delayMicroseconds(5000);
 }
 
 
@@ -650,8 +637,10 @@ void enterSleep() {
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
   GIMSK  |= _BV(PCIE0);                  // Enable Pin Change Interrupts
  
+  #if defined(MOTION_SENSOR) || defined(BUTTON)
   PCMSK0 |= _BV(PCINT3);                 // Enable pin change interrupt on PA3
   PCMSK1 |= _BV(PCINT8) | _BV(PCINT11);  // Enable pin change interrupt on PB0 and PB3
+  #endif
 
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
   sleep_enable();                        // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
@@ -671,6 +660,7 @@ void enterSleep() {
   sleep_disable();                       // Disable sleep mode
 }
 
+#if defined(MOTION_SENSOR) || defined(BUTTON)
 // ISR for motion sensor (pin change)
 ISR (PCINT0_vect) {  
   gotoSleepAgain = false;
@@ -680,6 +670,7 @@ ISR (PCINT1_vect) {
   gotoSleepAgain = false;
   pinChangeInterruptTriggered = true;
 }
+#endif
 
 // ISR for watchdog timer
 uint16_t wdtIsrCount = 0;
@@ -876,6 +867,7 @@ void readAndSendEnvironmentalData() {
     payload[1] = 'D';
     itoa((int16_t)(bme.temp() * 10), payload+3, 10); 
     radio.write( payload,sizeof(payload) );  // Send data
+    delayMicroseconds(POST_SEND_DELAY_US);
   }
 }
 #endif
@@ -946,33 +938,28 @@ void reportConfiguration() {
 } 
 
 #ifdef SERVO
-void positionServo(uint16_t pulseWidthStart,uint16_t pulseWidthEnd) {
-  DDRA |= (1<<PA7);
+void positionServo(uint16_t pulseWidth) {
+  DDRA  &= ~_BV(PA7);       // Set PA7 as input to avoid unintended servo movement during power-up
+  PORTA |= _BV(PA3);        // Set PA3 high: power on servo
+
+  for(uint16_t i=0; i<10; i++) {
+    delayMicroseconds(50000); // wait for C to charge and servo to power up
+  }
+
+  DDRA |= (1<<PA7);         // Set PA7 as output for PWM to servo
 
   uint16_t period     = 20000UL; // 20ms period for standard servos
   
-  uint16_t pulsewidth = pulseWidthStart;
-  uint16_t stepsize   = 10;
 
-  if(pulseWidthEnd > pulseWidthStart) {
-    while( pulsewidth<pulseWidthEnd ) {
-      pulsewidth+=stepsize;
-
-      PORTA |= (1<<PA7);
-      delayMicroseconds( pulsewidth );
-      PORTA &= ~(1<<PA7);
-      delayMicroseconds( period-pulsewidth );
-    }
+  // hold end position for 4s to ensure servo reaches it
+  for(uint16_t i=0; i<250; i++) {
+    PORTA |= (1<<PA7);
+    delayMicroseconds( pulseWidth );
+    PORTA &= ~(1<<PA7);
+    delayMicroseconds( period-pulseWidth );
   }
-  else {
-     while( pulsewidth>pulseWidthEnd ) {
-      pulsewidth-=stepsize;
 
-      PORTA |= (1<<PA7);
-      delayMicroseconds( pulsewidth );
-      PORTA &= ~(1<<PA7);
-      delayMicroseconds( period-pulsewidth );
-    }
-  }
+  // switch off power to servo after positioning to save power and avoid jitter
+   PORTA &= ~_BV(PA3);  
  }
 #endif

@@ -67,6 +67,12 @@ BH1750::BH1750(byte addr) {
   I2C = &Wire;
 }
 
+void BH1750::write(byte val){
+  Wire.beginTransmission(BH1750_I2CADDR);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
 /**
  * Configure BH1750 with specified mode
  * @param mode Measurement mode

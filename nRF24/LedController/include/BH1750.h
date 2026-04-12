@@ -64,6 +64,7 @@ public:
   };
 
   BH1750(byte addr = 0x23);
+  void write(byte val);
   bool configure(Mode mode);
   bool setMTreg(byte MTreg);
   bool measurementReady(bool maxWait = false);

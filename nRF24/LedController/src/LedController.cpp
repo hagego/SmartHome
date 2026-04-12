@@ -93,8 +93,8 @@ void   setPWMDutyCycle(uint8_t dutyCycle);     // set PWM duty cycle on PA7 (0-1
 #endif
 
 #ifdef LED_TYPE_WS2812
-void   initializeLedStripPattern(bool enablePattern);             // initialize LED strip pattern
-void   stepLedStripPattern();                   // step thru LED strip pattern
+void   initializeLedStrip();                      // initialize LED strip with all off
+void   setLedStripPattern(uint8_t patternCode);   // set LED strip pattern based on pattern code
 #endif
 
 #ifdef ENV_SENSOR
@@ -165,22 +165,6 @@ void setup() {
     initializePWM();                     // initialize PWM on PA7
   #endif
 
-  #ifdef LED_TYPE_WS2812
-    initializeLedStripPattern(false);
-  #endif
-
-  #ifdef LED_PATTERN_DEBUG
-    config.setLedCount(10); // use 3 LEDs for pattern debug
-    initializeLedStripPattern(false);
-
-    while(true) {
-      stepLedStripPattern();
-      
-      for(uint16_t i=0; i<1000; i++) {
-        delayMicroseconds(1000);
-      } 
-    }
-  #endif
 
   // store client ID in 1st byte of payload and ack buffer
   payload[0] = config.getClientId();
@@ -332,17 +316,18 @@ void loop() {
       // measure illuminance
       float lux = readIlluminance();
 
-      #ifdef LED_TYPE_PWM
-        if(lux <= config.getIlluminanceThreshold()) {
-          // ambient light is insufficient, turn on LED
-          setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
-          PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
+      if(wakeupSource == 1 || wakeupSource==2) {
+        if(config.getIlluminanceThreshold()>0 && lux >= config.getIlluminanceThreshold()) {
+          // ambient light is sufficient go back to sleep
+          return;
         }
-      #endif
-
-      if((wakeupSource == 1 || wakeupSource==2) && (config.getIlluminanceThreshold()>0 && lux >= config.getIlluminanceThreshold())) {
-        // ambient light is sufficient go back to sleep
-        return;
+        else {
+          #ifdef LED_TYPE_PWM
+            // ambient light is insufficient, turn on LED
+            setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
+            PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
+          #endif
+        }
       }
     #endif
 
@@ -534,30 +519,25 @@ void loop() {
               }
             }
           #endif
+
+          #ifdef LED_TYPE_WS2812
+            // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
+            if(text[1]=='L') {
+              uint8_t patternCode = (uint8_t)parameter;
+              setLedStripPattern(patternCode);
+            }
+
+            // command to set LED count: "N:<value>" where <value> is number of LEDs
+            if(text[1]=='N' ) {
+              if(parameter <= MAX_NUM_LEDS) {
+                config.setLedCount((uint8_t)parameter);
+              }
+            }
+          #endif
         }
       }
 
-      #ifdef LED_TYPE_WS2812
-        // command to apply a pattern to the LED strip: "L:<pattern>" where <pattern> is pattern code
-        if(text[1]=='L') {
-          if(!ledStripPatternEnabled) {
-            // initialize LED strip if not already done
-            initializeLedStripPattern(true);
-            ledStripPatternEnabled = true;
-          }
-          else {
-            stepLedStripPattern();
-          }
-        }
 
-        // command to set LED count: "N:<value>" where <value> is number of LEDs
-        if(text[1]=='N' && strlen(text+1)>2) {
-          int ledCount = atoi(text + 3);
-          if(ledCount >= 0 && ledCount <= MAX_NUM_LEDS) {
-            config.setLedCount((uint8_t)ledCount);
-          }
-        }
-      #endif
     } // if(radio.available(&pipe))
 
 
@@ -602,10 +582,21 @@ void loop() {
 
     #endif // BUTTON
 
+    #if defined(LED_TYPE_PWM) && defined(MOTION_SENSOR)
+      // stay awake until motion detection is cleared
+      if(wakeupSource == 1 && ((PINB & _BV(PB0)) == _BV(PB0))) {
+        startTime = millis();
+      } 
+      if(wakeupSource == 2 && ((PINB & _BV(PB3)) == _BV(PB3))) {
+        startTime = millis();
+      }
+    #endif
+
     delayMicroseconds(1000);
   } // while loop
 
   #ifdef MOTION_SENSOR
+    // ensure motion sensor input pins are low again before going back to sleep to avoid immediate wakeup
     if(wakeupSource == 1) {
       while((PINB & _BV(PB0)) == 1) {
         delayMicroseconds(1000);
@@ -753,15 +744,31 @@ void readAndSendBatteryVoltage(){
 
 #ifdef LED_TYPE_WS2812
 
-void initializeLedStripPattern(bool enablePattern) {
+void initializeLedStrip() {
   uint8_t numLeds = config.getLedCount();
 
   for(uint8_t i=0; i<numLeds; i++) {
     ledArray[i].r = 0;
     ledArray[i].g = 0;
     ledArray[i].b = 0;
+  }
 
-    if (enablePattern) {
+  #ifdef ENABLE_SLEEP
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
+  #else
+    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
+  #endif
+}
+
+void setLedStripPattern(uint8_t patternCode) {
+  uint8_t numLeds = config.getLedCount();
+
+  if(patternCode==0) {
+    for(uint8_t i=0; i<numLeds; i++) {
+      ledArray[i].r = 0;
+      ledArray[i].g = 0;
+      ledArray[i].b = 0;
+
       switch(i % 3) {
         case 0:
           ledArray[i].r = 255;
@@ -775,23 +782,13 @@ void initializeLedStripPattern(bool enablePattern) {
       }
     }
   }
-
-  #ifdef ENABLE_SLEEP
-    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
-  #else
-    ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) | _BV(PA3)); // use PA7 and PA3 for data
-  #endif
-}
-
-void stepLedStripPattern() {
-  uint8_t numLeds = config.getLedCount();
-
-  // shift array content to the right by one position
-  struct cRGB lastLed = ledArray[numLeds - 1];
-  for(uint8_t i = numLeds - 1; i > 0; i--) {
-    ledArray[i] = ledArray[i - 1];
+  else {
+    cRGB last = ledArray[numLeds-1];
+    for(uint8_t i=numLeds-1; i>0; i--) {
+      ledArray[i] = ledArray[i-1];
+    }
+    ledArray[0] = last;
   }
-  ledArray[0] = lastLed;
 
   #ifdef ENABLE_SLEEP
     ws2812_setleds_pin(ledArray, numLeds, _BV(PA7) );           // use only PA7 for data, PA3 is used to power on the DCDC
@@ -839,8 +836,9 @@ void setPWMDutyCycle(uint8_t dutyCycle) {
 float readIlluminance() {
   float lux = 0.0;
   
-  BH1750 lightMeter(0x23);   // Address 0x23 is the default address of the sensor
-  delayMicroseconds(10000);  // ensure enough time for Serial output in case of error
+  BH1750 lightMeter(0x23);            // Address 0x23 is the default address of the sensor
+  lightMeter.write(BH1750_POWER_ON);  // Power on the sensor
+  delayMicroseconds(10000);           // ensure enough time for Serial output in case of error
 
   // increase measurement time for better low-light accuracy
   if (lightMeter.configure(BH1750::ONE_TIME_HIGH_RES_MODE) && lightMeter.setMTreg(100)) {
@@ -849,6 +847,8 @@ float readIlluminance() {
     delayMicroseconds(50000U); // ensure enough time for measurement
     delayMicroseconds(50000U); // ensure enough time for measurement
     lux = lightMeter.readLightLevel();
+
+    lightMeter.write(BH1750_POWER_DOWN);  // Power down the sensor
   }
 
   return lux;

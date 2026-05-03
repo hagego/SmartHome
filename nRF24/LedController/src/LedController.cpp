@@ -1,6 +1,5 @@
 /**
- * BatteryLight - Battery-powered light with motion sensor and nRF24L01+ wireless control
- * Uses ATtiny84, PIR motion sensor, and LED driver with PWM brightness control
+ * multiple purpose nRF24 client cloded on ATtiny84. Supports motion detection, illuminance measurement, battery voltage reporting, LED control and more.
  * 
  * ATtiny84 pinout:
  * - pin  2: PB0,PCINT8  - Motion sensor 1 input
@@ -11,10 +10,13 @@
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2 or pull-up button input as motion sensor 3
+ * - pin 10: PA3,PCINT3  - DCDC enable for LED driver or data pin for WS2812 strip 2 or pull-up button input
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
+ * 
+ * power consumption data
+ *  motion sensor:  270uA
  */
 
 #include <Arduino.h>
@@ -59,6 +61,10 @@ const double VREF  = 1.1;       // internal reference voltage
 uint8_t nRF24Addresses[][6] = {"pclnt", "ctrl "}; 
 
 const uint8_t nRF24PayloadSize = 16; // max. 32 bytes possible
+
+// watchdog timer as interrupt counter for periodic wakeup
+uint16_t wdtIsrCount = 0;            // counts number of WDT interrupts for periodic wakeup
+uint16_t wdtIsrCountThreshold = 0;   // number of WDT interrupts until periodic wakeup, calculated based on sleep period in configuration
 
 // global configuration object
 Configuration config;
@@ -119,7 +125,7 @@ void setup() {
  * - pin  7: PA6,MOSI    - SPI MOSI for nRF24LO1
  * - pin  8: PA5,MISO    - SPI MISO for nRF24LO1
  * - pin  9: PA4,SCK     - SPI SCK for nRF24LO1
- * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2 or pull-up button input as motion sensor 3
+ * - pin 10: PA3         - DCDC enable for LED driver or data pin for WS2812 strip 2 or button input (PCINR3)
  * - pin 11: PA2         - IIC SDA for BH1750FVI
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
@@ -141,11 +147,15 @@ void setup() {
   } 
   // initialize configuration
   config.init();
+  wdtIsrCountThreshold = config.getSleepPeriod()/8;
 
   // set pin modes
-  DDRB  &= ~_BV(PB0);            // pin  2: Set PB0 as input: motion sensor 1
+  DDRB  &= ~_BV(PB0);            // pin  2: Set PB0 (PCINT8) as input: motion sensor
+  #ifndef MOTION_SENSOR
+  PORTB |=  _BV(PB0);            // Enable pull-up resistor
+  #endif
   DDRB  |=  _BV(PB1);            // pin  3: Set PB1 as output: CE for nRF24L01
-  DDRB  &= ~_BV(PB3);            // pin  4: Set PB3 as input: motion sensor 2
+  DDRB  &= ~_BV(PB3);            // pin  4: Set PB3 as input: motion sensor 2 / reset pin
   DDRB  |=  _BV(PB2);            // pin  5: Set PB2 as output: CS for nRF24L01
   DDRA  |=  _BV(PA7);            // pin  6: Set PA7 as output for PWM to LED driver
   DDRA  |=  _BV(PA6);            // pin  7: Set PA6 as output: SPI MOSI for nRF24LO1
@@ -155,8 +165,8 @@ void setup() {
   DDRA  |=  _BV(PA3);            // pin 10: Set PA3 as output: enables DCDC for LED driver
   PORTA &= ~_BV(PA3);            // Set PA3 low: disables DCDC for LED driver => LED off
   #else
-  DDRA  &= ~_BV(PA3);            // pin 10: Set PA3 as input: motion sensor 3
-  PORTA |=  _BV(PA3);            // Enable pull-up resistor for motion sensor 3 pin
+  DDRA  &= ~_BV(PA3);            // pin 10: Set PA3 (PCINT3) as input: button
+  PORTA |=  _BV(PA3);            // Enable pull-up resistor for button
   #endif
   DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
   DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
@@ -264,12 +274,27 @@ void loop() {
 
       gotoSleepAgain = true;
       pinChangeInterruptTriggered = false;
+
+      #ifdef MOTION_SENSOR
+        // change IIC pins to input with pull-up
+        DDRA  &= ~_BV(PA1);            // Set PA1 as input
+        PORTA |=  _BV(PA1);            // Enable pull-up resistor
+
+        DDRA  &= ~_BV(PA2);            // Set PA2 as input: button
+        PORTA |=  _BV(PA2);            // Enable pull-up resistor
+      #endif
+
       // sleep until woken up by motion sensor or watchdog timer, if woken up by watchdog timer go back to sleep until motion is detected or timeout is reached
       while(gotoSleepAgain ) {
         enterSleep();
       }
 
       // waking up
+      #ifdef MOTION_SENSOR
+        // change IIC pins to output again
+        DDRA  |=  _BV(PA2);            // pin 11: Set PA2 as output: IIC SDA for BH1750FVI
+        DDRA  |=  _BV(PA1);            // pin 12: Set PA1 as output: IIC SCL for BH1750FVI
+      #endif
     }
 
     // check and store wakeup source
@@ -456,6 +481,7 @@ void loop() {
           // command to set sleep period value: "S:<value>" where <value> is in seconds
           if(text[1]=='S' ) {
             config.setSleepPeriod((uint16_t)parameter);
+            wdtIsrCountThreshold = config.getSleepPeriod()/8;
           }
 
           // command to set nRF24 TX power level: "W:<value>" where <value> is 0-3
@@ -572,7 +598,7 @@ void loop() {
 
         radio.txStandBy();
         radio.openReadingPipe(1, nRF24Addresses[1]);
-        radio.startListening();   
+        radio.startListening();
 
         // wait 400ms for debounce
         for(uint16_t i=0; i<400; i++) {
@@ -625,12 +651,16 @@ void loop() {
  * enter MCU sleep mode. nRF24 module is *not* handled in this function
  */
 void enterSleep() {
-  GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts
-  GIMSK  |= _BV(PCIE0);                  // Enable Pin Change Interrupts
- 
-  #if defined(MOTION_SENSOR) || defined(BUTTON)
-  PCMSK0 |= _BV(PCINT3);                 // Enable pin change interrupt on PA3
-  PCMSK1 |= _BV(PCINT8) | _BV(PCINT11);  // Enable pin change interrupt on PB0 and PB3
+  ADCSRA &= ~_BV(ADEN);                 // disable ADC
+
+  #if defined(MOTION_SENSOR)
+  GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts on PCINT11..8
+  PCMSK1 |= _BV(PCINT8);                 // Enable pin change interrupt on PB0,PCINT8
+  #endif
+
+  #if defined(BUTTON)
+  GIMSK  |= _BV(PCIE0);                 // Enable Pin Change Interrupts on PCINT7..0
+  PCMSK0 |= _BV(PCINT3);                // Enable pin change interrupt on PA3,PCINT3
   #endif
 
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // replaces above statement
@@ -641,12 +671,14 @@ void enterSleep() {
   // The ISR will be called when the interrupt occurs
   // The CPU will wake up and continue executing from here after ISR
   //cli();                               // Disable interrupts
-  GIMSK  &= ~_BV(PCIE1);                 // Disable Pin Change Interrupts
-  GIMSK  &= ~_BV(PCIE0);                 // Disable Pin Change Interrupts
 
-  PCMSK0 &= ~_BV(PCINT3); 
-  PCMSK1 &= ~_BV(PCINT8); 
-  PCMSK1 &= ~_BV(PCINT11); 
+  #if defined(MOTION_SENSOR)
+  GIMSK  &= ~_BV(PCIE1);                 // Disable Pin Change Interrupts
+  #endif
+
+  #if defined(BUTTON)
+  GIMSK  &= ~_BV(PCIE0);                 // Disable Pin Change Interrupts
+  #endif
 
   sleep_disable();                       // Disable sleep mode
 }
@@ -664,12 +696,11 @@ ISR (PCINT1_vect) {
 #endif
 
 // ISR for watchdog timer
-uint16_t wdtIsrCount = 0;
 ISR (WDT_vect) {
   WDTCSR |= _BV(WDIE); // re-enable WDT interrupt
 
   wdtIsrCount++;
-  if(wdtIsrCount>config.getSleepPeriod()/8) {
+  if(wdtIsrCount>wdtIsrCountThreshold) {
     wdtIsrCount = 0;
     gotoSleepAgain = false;
   }

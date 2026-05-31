@@ -17,6 +17,8 @@
  * 
  * power consumption data
  *  motion sensor:  270uA
+ *  Button:         130uA (Garage door opener)
+ *                   40uA (Ventilation))
  */
 
 #include <Arduino.h>
@@ -48,8 +50,14 @@
 // wait time after sending data in microseconds
 const uint16_t POST_SEND_DELAY_US = 30000; // 30ms
 
+#ifdef BUTTON
 // threshold for long button press in ms
 const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
+#endif
+
+// minimum time between 2 battery voltage reports in ms
+const uint16_t MIN_BATTERY_REPORT_INTERVAL = 40000;  // seconds
+uint16_t       lastBatteryReportTime       = 0;      // timestamp in s of last battery voltage report
 
 // resistive divider for battery voltage measurement
 const double R_VCC = 470000.0;  // VCC to sense point 470k
@@ -285,9 +293,11 @@ void loop() {
       #endif
 
       // sleep until woken up by motion sensor or watchdog timer, if woken up by watchdog timer go back to sleep until motion is detected or timeout is reached
+      power_usi_disable();
       while(gotoSleepAgain ) {
         enterSleep();
       }
+      power_usi_enable();
 
       // waking up
       #ifdef MOTION_SENSOR
@@ -382,9 +392,13 @@ void loop() {
       #endif
     }
     else {
-      // periodic wakeup. Measure battery voltage and send
-      readAndSendBatteryVoltage();
-      delayMicroseconds(POST_SEND_DELAY_US);
+      // periodic wakeup.
+      lastBatteryReportTime += config.getSleepPeriod(); // update last battery report time based on configured sleep period
+      if(lastBatteryReportTime >= MIN_BATTERY_REPORT_INTERVAL) {
+        readAndSendBatteryVoltage();
+        delayMicroseconds(POST_SEND_DELAY_US);
+        lastBatteryReportTime = 0; // reset battery report timer
+      } 
     }
 
     #ifdef ENV_SENSOR
@@ -653,6 +667,8 @@ void loop() {
 void enterSleep() {
   ADCSRA &= ~_BV(ADEN);                 // disable ADC
 
+  power_adc_disable();                    // disable ADC to save power
+
   #if defined(MOTION_SENSOR)
   GIMSK  |= _BV(PCIE1);                  // Enable Pin Change Interrupts on PCINT11..8
   PCMSK1 |= _BV(PCINT8);                 // Enable pin change interrupt on PB0,PCINT8
@@ -719,7 +735,7 @@ ISR(BADISR_vect) {
  * initialize ADC
 */
 void initAdc() {
-  PRR    &= ~_BV(PRADC);      // make sure PRADC is clear
+  power_adc_enable();         // enable ADC power, otherwise changes to ADMUX and ADCSRA won't work
 	
   // Disable Comparator
 	ACSR &= ~_BV(ACIE);        // disable Analog Comparator interrupt
@@ -748,6 +764,7 @@ void initAdc() {
   DIDR0  |=  _BV(ADC0D);              // disable digital input on ADC0
 
   ADCSRA &= ~_BV(ADEN);               // disable ADC again
+  power_adc_disable();                // power down ADC
 }
 
 

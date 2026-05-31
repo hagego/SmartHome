@@ -132,7 +132,7 @@
 			(outputdirectory "")
 		)
 	)
-	(property "Version" "1.0")
+	(property "Version" "1.1")
 	(footprint "hagego:JST_XH_1x02_P2.54"
 		(layer "F.Cu")
 		(uuid "08a18857-f27c-4122-a4db-6d4eeb14202a")

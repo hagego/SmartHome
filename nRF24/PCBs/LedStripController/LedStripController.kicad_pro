@@ -257,7 +257,7 @@
       "internal_id": "",
       "mfg": "",
       "mpn": "",
-      "sch_revision": "1.0"
+      "sch_revision": "${Version}"
     },
     "layer_pairs": [],
     "layer_presets": [],
@@ -772,7 +772,7 @@
     ]
   ],
   "text_variables": {
-    "Version": "1.0"
+    "Version": "1.1"
   },
   "tuning_profiles": {
     "meta": {

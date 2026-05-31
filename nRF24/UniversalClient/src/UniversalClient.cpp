@@ -19,6 +19,7 @@
  *  motion sensor:  270uA
  *  Button:         130uA (Garage door opener)
  *                   40uA (Ventilation))
+ * BME280:           20uA
  */
 
 #include <Arduino.h>

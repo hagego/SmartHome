@@ -73,8 +73,8 @@ class Configuration {
     static const uint8_t ADDRESS_LED_COUNT      = 6;  // WS2812 LED count (1 byte)
     static const uint8_t ADDRESS_ADDRESS_BYTE   = 7;  // 1st byte of nRF24 send pipe (pipe 0) (1 byte)
     static const uint8_t ADDRESS_SLEEP_PERIOD   = 8;  // sleep period in seconds (2 byte)
-    static const uint8_t ADDRESS_LONG_CLICK     = 9;  // button long click supported ? (1 byte)
-    static const uint8_t ADDRESS_TX_POWER_LEVEL = 10; // nRF24 TX power level (1 byte)
+    static const uint8_t ADDRESS_LONG_CLICK     = 10;  // button long click supported ? (1 byte)
+    static const uint8_t ADDRESS_TX_POWER_LEVEL = 11; // nRF24 TX power level (1 byte)
 
 
     // magic number to check if EEPROM has been initialized with default data

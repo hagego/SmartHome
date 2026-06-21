@@ -48,7 +48,7 @@
 #include "Configuration.h"
 
 // SW release version
-const uint8_t SW_RELEASE_VERSION = 1;
+const uint8_t SW_RELEASE_VERSION = 2;
 
 // wait time after sending data in microseconds
 const uint16_t POST_SEND_DELAY_US = 30000; // 30ms

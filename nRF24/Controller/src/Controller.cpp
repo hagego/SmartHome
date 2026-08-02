@@ -50,7 +50,7 @@ const uint8_t PIN_CSN = 0;  // D3 on D1 mini (GPIO0)
 // pins for locally connected stuff
 const uint8_t PIN_BUTTON1 = 5;         // local button connected to I2C pins, D1 on D1 mini (GPIO5)
 const uint8_t PIN_BUTTON2 = 4;         // local button connected to I2C pins, D2 on D1 mini (GPIO4)
-const uint8_t PIN_MOTION_SENSOR = 16;  // local motion sensor pin, D0 on D1 mini (GPIO16)
+const uint8_t PIN_MOTION_SENSOR = 16;   // local motion sensor pin, D0 on D1 mini (GPIO16)
 
 // EEPROM addresses
 const uint8_t EEPROM_SIZE             = (uint8_t)1;  // size in bytes
@@ -123,6 +123,10 @@ void setup() {
   // RF24_ADDR_RECEIVE
   sprintf(buffer,"nRF24 controller starting, listening on nRF24 address %s",nRF24Addresses[1]);
   Serial.println(buffer);
+
+  #ifdef LOCAL_MOTION_SENSOR
+    pinMode(PIN_MOTION_SENSOR, INPUT); 
+  #endif
  
   // Connect to WiFi network
   Serial.print(F("Connecting to SID "));
@@ -294,14 +298,19 @@ void setup() {
 
 u32_t keepAliveCounter = 0;                // use simple counter to send keepalive messages to MQTT broker roughly every half hour
 uint8_t ledStripState = 1;
-u_int8_t oldLocalMotionSensorState = 0;    // used to detect changes in local motion sensor state
+u_int8_t oldLocalMotionSensorState   = 0;  // used to detect changes in local motion sensor state
+u_int16_t wifiConnectionCheckCounter = 0;  // use simple counter to check WiFi connection roughly every few seconds
 
 void loop() {
   keepAliveCounter++;
+  wifiConnectionCheckCounter++;
 
   // try to reconnect to WIFI if we have initially managed to connect and we are now disconnected
   #ifndef PORTABLE
-    if (wifiConnected) {
+    if (wifiConnected && wifiConnectionCheckCounter >= 10000) {
+      wifiConnectionCheckCounter = 0;
+
+      Serial.println("WIFI connection check");
       while (WiFi.status() != WL_CONNECTED) {
         Serial.println("WIFI disconnected");
         WiFi.begin(WIFI_SSID, WIFI_PSK);

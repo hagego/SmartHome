@@ -15,11 +15,6 @@
  * - pin 12: PA1         - IIC SCL for BH1750FVI
  * - pin 13: PA0,ADC0    - Battery voltage measurement
  * 
- * power consumption data
- *  motion sensor:  270uA
- *  Button:         130uA (Garage door opener)
- *                   40uA (Ventilation))
- * BME280:           20uA
  */
 
 #include <Arduino.h>
@@ -48,7 +43,7 @@
 #include "Configuration.h"
 
 // SW release version
-const uint8_t SW_RELEASE_VERSION = 2;
+const uint8_t SW_RELEASE_VERSION = 5;
 
 // wait time after sending data in microseconds
 const uint16_t POST_SEND_DELAY_US = 30000; // 30ms
@@ -63,8 +58,13 @@ const uint16_t MIN_BATTERY_REPORT_INTERVAL = 40000;  // seconds
 uint16_t       lastBatteryReportTime       = 0;      // timestamp in s of last battery voltage report
 
 // resistive divider for battery voltage measurement
+#ifdef BOARD_REV_1_3
+const double R_VCC = 1000000.0; // VCC to sense point 1M
+const double R_GND = 220000.0;  // sense point to GND 220k
+#else
 const double R_VCC = 470000.0;  // VCC to sense point 470k
 const double R_GND = 100000.0;  // sense point to GND 100k
+#endif
 const double VREF  = 1.1;       // internal reference voltage
 
 // nRF24 addresses to use (channel) (5 bytes)
@@ -413,6 +413,13 @@ void loop() {
 
   justStarted = false;
 
+    #ifdef BUTTON
+    //ensure PA3 goes high again (button released)
+    while((PINA & _BV(PA3)) == 0) {
+      delayMicroseconds(1000);
+    }
+  #endif
+
   // send ready to listen message
   payload[1] = 'L';
   payload[3] = '1';
@@ -423,23 +430,20 @@ void loop() {
   delayMicroseconds(POST_SEND_DELAY_US);
   radio.txStandBy();              // Wait for the transmission to complete
   
-  #ifdef BUTTON
-    //ensure PA3 goes high again (button released)
-    while((PINA & _BV(PA3)) == 0) {
-      delayMicroseconds(1000);
-    }
-  #endif
+
   // Now set the module as receiver and wait for commands
   radio.openReadingPipe(1, nRF24Addresses[1]);
   radio.startListening();
+  radio.writeAckPayload(0, ack, sizeof(ack)); // send ack payload with client ID
 
   boolean exitCondition = false;
 
   uint64_t startTime = millis();
-  radio.writeAckPayload(0, ack, sizeof(ack)); // send ack payload with client ID
+  uint64_t aliveTime = config.getTimeout()<100 ? (uint64_t)config.getTimeout() * 1000UL : (uint64_t)config.getTimeout(); // values <100 are seconds, values >=100 are milliseconds
+  
   while (    !exitCondition
           && (   (config.getTimeout() == 0)
-              || ((millis() - startTime) < (uint64_t)config.getTimeout() * 1000UL))) {
+              || ((millis() - startTime) < aliveTime))) {
     uint8_t pipe;
     if(radio.available(&pipe)) {
       radio.writeAckPayload(pipe, ack, sizeof(ack)); // send ack payload with client ID
@@ -892,15 +896,13 @@ float readIlluminance() {
   delayMicroseconds(10000);           // ensure enough time for Serial output in case of error
 
   // increase measurement time for better low-light accuracy
-  if (lightMeter.configure(BH1750::ONE_TIME_HIGH_RES_MODE) && lightMeter.setMTreg(100)) {
-    delayMicroseconds(50000U); // ensure enough time for measurement
+  if (lightMeter.configure(BH1750::ONE_TIME_HIGH_RES_MODE) ) {
     delayMicroseconds(50000U); // ensure enough time for measurement
     delayMicroseconds(50000U); // ensure enough time for measurement
     delayMicroseconds(50000U); // ensure enough time for measurement
     lux = lightMeter.readLightLevel();
-
-    lightMeter.write(BH1750_POWER_DOWN);  // Power down the sensor
   }
+  lightMeter.write(BH1750_POWER_DOWN);  // Power down the sensor
 
   return lux;
 }

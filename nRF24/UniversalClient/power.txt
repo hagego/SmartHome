@@ -1,0 +1,19 @@
+Button
+======
+TP4056:                2.9 uA
+MCP1700 3.3 + Caps:    6.1 uA
+resistors:            12.9 uA
+nRF24 + ATTINY        19.0 uA
+
+Iluminance Sensor
+================
+TP4056
+MCP1700 3.3 + Caps
+BH1750                   9 uA
+resistors               15 uA
+nRF24 + ATTINY          24 uA
+
+TP4056                   3 uA
+MCP1700 2.2 + Caps 10uF 11 uA
+resistors               14 uA
+nRF24 + ATTINY          22 uA

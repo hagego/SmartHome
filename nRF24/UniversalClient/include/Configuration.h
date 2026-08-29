@@ -24,8 +24,10 @@ class Configuration {
     void setTimeout(uint16_t timeout);
 
     // gets/sets PWM value in percent
+    #ifdef PWM
     uint8_t getPwmValue();
     void setPwmValue(uint8_t pwmValue);
+    #endif // PWM
 
     // gets/sets illuminance threeshold in lux
     uint8_t getIlluminanceThreshold();
@@ -44,8 +46,10 @@ class Configuration {
     void     setSleepPeriod(uint16_t sleepPeriod);
 
       // gets/sets if button long click is supported
+    #ifdef BUTTON
     uint8_t  getLongClickSupported();
     void     setLongClickSupported(uint8_t longClickSupported);
+    #endif // BUTTON
 
     // gets/sets nRF24 TX power level
     uint8_t  getTxPowerLevel();
@@ -56,12 +60,18 @@ class Configuration {
     // data members
     uint8_t  clientId;
     uint16_t timeout;
+    #ifdef PWM
     uint8_t  pwmValue;
+    #endif // PWM
     uint8_t  illuminanceThreshold;
     uint8_t  ledCount;
     uint8_t  addressByte;
     uint16_t sleepPeriod;
+
+    #ifdef BUTTON
     uint8_t  longClickSupported;
+    #endif // BUTTON
+
     uint8_t  txPowerLevel;
 
     // addresses

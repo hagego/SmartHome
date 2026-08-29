@@ -1,18 +1,22 @@
 #include "Configuration.h"
 
-static uint8_t  ADDRESS_BYTE_DEFAULT = 'p';
+static uint8_t  ADDRESS_BYTE_DEFAULT = 'o';
 
 Configuration::Configuration()
 {
     // not initialized, set default values
     clientId = 255;             // default client ID 255
     timeout  = 60;              // default timeout 60 seconds
+    #ifdef PWM
     pwmValue = 10;              // default PWM value 100%
+    #endif // PWM
     illuminanceThreshold = 20;  // default illuminance threshold 20 lux
     ledCount = 0;               // default LED count 0
     addressByte = ADDRESS_BYTE_DEFAULT;          // default address byte 'o'
     sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
+    #ifdef BUTTON
     longClickSupported = 0;     // default: button long click not supported
+    #endif // BUTTON
     txPowerLevel = 2;           // default TX power level 2
 }
 
@@ -24,35 +28,47 @@ void Configuration::init()
         // not initialized, set default values
         clientId = 255;             // default client ID 255
         timeout  = 0;               // default timeout 60 seconds
+        #ifdef PWM
         pwmValue = 10;              // default PWM value 100%
+        #endif // PWM
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
         addressByte = ADDRESS_BYTE_DEFAULT;          // default address byte 'o'
         sleepPeriod = 3600;         // default sleep period 3600 seconds (1 hour)
+        #ifdef BUTTON
         longClickSupported = 0;     // default: button long click not supported
+        #endif // BUTTON
         txPowerLevel = 2;           // default TX power level 2
 
         // write defaults to EEPROM
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
         writeByteToEEPROM(ADDRESS_CLIENT_ID, clientId);
         writeWordToEEPROM(ADDRESS_TIMEOUT, timeout);
+        #ifdef PWM
         writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
+        #endif // PWM
         writeByteToEEPROM(ADDRESS_ILLUMINANCE, illuminanceThreshold);
         writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
         writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
         writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
+        #ifdef BUTTON
         writeByteToEEPROM(ADDRESS_LONG_CLICK, longClickSupported);
+        #endif // BUTTON
         writeByteToEEPROM(ADDRESS_TX_POWER_LEVEL, txPowerLevel);
     } else {
         // read values from EEPROM
         clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
         timeout              = readWordFromEEPROM(ADDRESS_TIMEOUT);
+        #ifdef PWM
         pwmValue             = readByteFromEEPROM(ADDRESS_PWM_VALUE);
+        #endif // PWM
         illuminanceThreshold = readByteFromEEPROM(ADDRESS_ILLUMINANCE);
         ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
         addressByte          = readByteFromEEPROM(ADDRESS_ADDRESS_BYTE);
         sleepPeriod          = readWordFromEEPROM(ADDRESS_SLEEP_PERIOD);
+        #ifdef BUTTON
         longClickSupported   = readByteFromEEPROM(ADDRESS_LONG_CLICK);
+        #endif // BUTTON
         txPowerLevel         = readByteFromEEPROM(ADDRESS_TX_POWER_LEVEL);
         if(addressByte != 'e' && addressByte != 'o' && addressByte != 'u' && addressByte != 'p' ) {
           // invalid address byte, reset to default
@@ -89,6 +105,7 @@ void Configuration::setTimeout(uint16_t timeout)
     writeWordToEEPROM(ADDRESS_TIMEOUT, timeout);
 }
 
+#ifdef PWM
 uint8_t Configuration::getPwmValue()
 {
     return pwmValue;
@@ -98,6 +115,7 @@ void Configuration::setPwmValue(uint8_t pwmValue)
     this->pwmValue = pwmValue;
     writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
 }
+#endif // PWM
 
 uint8_t Configuration::getIlluminanceThreshold()
 {
@@ -139,6 +157,7 @@ void Configuration::setSleepPeriod(uint16_t sleepPeriod)
     writeWordToEEPROM(ADDRESS_SLEEP_PERIOD, sleepPeriod);
 }
 
+#ifdef BUTTON
 uint8_t Configuration::getLongClickSupported()
 {
     return Configuration::longClickSupported;
@@ -148,6 +167,7 @@ void Configuration::setLongClickSupported(uint8_t longClickSupported)
     this->longClickSupported = longClickSupported;
     writeByteToEEPROM(ADDRESS_LONG_CLICK, longClickSupported);
 }   
+#endif // BUTTON
 
 uint8_t Configuration::getTxPowerLevel()
 {

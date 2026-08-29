@@ -43,10 +43,10 @@
 #include "Configuration.h"
 
 // SW release version
-const uint8_t SW_RELEASE_VERSION = 5;
+const uint8_t SW_RELEASE_VERSION = 7;
 
 // wait time after sending data in microseconds
-const uint16_t POST_SEND_DELAY_US = 30000; // 30ms
+const uint16_t POST_SEND_DELAY_US = 10000; // 10ms
 
 #ifdef BUTTON
 // threshold for long button press in ms
@@ -54,8 +54,14 @@ const uint16_t LONG_PRESS_THRESHOLD_MS = 700;
 #endif
 
 // minimum time between 2 battery voltage reports in ms
-const uint16_t MIN_BATTERY_REPORT_INTERVAL = 40000;  // seconds
-uint16_t       lastBatteryReportTime       = 0;      // timestamp in s of last battery voltage report
+const uint32_t MIN_BATTERY_REPORT_INTERVAL = 86400;  // seconds, 1 day
+uint32_t       lastBatteryReportTime       = 0;      // timestamp in s of last battery voltage report
+
+// report configuration data after each nth battery measurement
+#ifndef ENV_SENSOR
+const uint8_t REPORT_CONFIGURATION_INTERVAL = 10; // change as needed
+uint8_t       batteryMeasurementCount = 0;
+#endif // ENV_SENSOR
 
 // resistive divider for battery voltage measurement
 #ifdef BOARD_REV_1_3
@@ -372,7 +378,6 @@ void loop() {
         // power up radio
     radio.powerUp();
     delayMicroseconds(POST_SEND_DELAY_US);     // wait for radio to stabilize
-    radio.setRetries(5,20);                    // Max delay between retries & number of retries
     radio.setPALevel((rf24_pa_dbm_e)config.getTxPowerLevel());    // Set power level
     radio.stopListening(nRF24Addresses[0]);    // switch to writing on pipe 0 
     delayMicroseconds(POST_SEND_DELAY_US);     // wait to settle current after switching to transmitter mode
@@ -401,6 +406,15 @@ void loop() {
         readAndSendBatteryVoltage();
         delayMicroseconds(POST_SEND_DELAY_US);
         lastBatteryReportTime = 0; // reset battery report timer
+
+        // check if it's time to report configuration
+        #ifndef ENV_SENSOR
+        batteryMeasurementCount++;
+        if(batteryMeasurementCount >= REPORT_CONFIGURATION_INTERVAL) {
+          reportConfiguration();
+          batteryMeasurementCount = 0;
+        }
+        #endif // ENV_SENSOR
       } 
     }
 
@@ -927,55 +941,53 @@ void readAndSendEnvironmentalData() {
 
 void reportConfiguration() {
   // send client ID
-  payload[1] = 'X';
-  utoa((uint16_t)(config.getClientId()), payload+3, 10);
-  radio.write( payload,sizeof(payload) );
-  delayMicroseconds(POST_SEND_DELAY_US);
-
-  // send address byte
-  payload[1] = 'A';
-  payload[3] = (char)(config.getAddressByte());
-  payload[4] = 0;
-  radio.write( payload,sizeof(payload) );
-  delayMicroseconds(POST_SEND_DELAY_US);
+  // payload[1] = 'X';
+  // utoa((uint16_t)(config.getClientId()), payload+3, 10);
+  // radio.write( payload,sizeof(payload) );
+  // delayMicroseconds(POST_SEND_DELAY_US);
 
   // send SW version
-  payload[1] = 'R';
+  payload[1] = 'r';
   utoa(SW_RELEASE_VERSION, payload+3, 10);
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(POST_SEND_DELAY_US);
 
   // send timeout setting
-  payload[1] = 'T';
+  payload[1] = 't';
   utoa(config.getTimeout(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(POST_SEND_DELAY_US);
 
   // send sleep period setting
-  payload[1] = 'S';
+  payload[1] = 's';
   ultoa(config.getSleepPeriod(), payload+3, 10);
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(POST_SEND_DELAY_US);
 
-  // send TX power level
-  payload[1] = 'W';
-  payload[3] = '0' + config.getTxPowerLevel();
+  // send address byte
+  payload[1] = 'a';
+  payload[3] = (char)(config.getAddressByte());
   payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(POST_SEND_DELAY_US);
+
+  // send TX power level
+  payload[1] = 'w';
+  payload[3] = '0' + config.getTxPowerLevel();
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(POST_SEND_DELAY_US);
 
   // send long click supported setting
   #ifdef BUTTON
-  payload[1] = 'B';
+  payload[1] = 'b';
   payload[3] = config.getLongClickSupported() ? '1' : '0';
-  payload[4] = 0;
   radio.write( payload,sizeof(payload) );
   delayMicroseconds(POST_SEND_DELAY_US);
   #endif
 
   #ifdef LED_TYPE_PWM
     // send PWM value
-    payload[1] = 'P';
+    payload[1] = 'p';
     utoa((uint16_t)(config.getPwmValue()), payload+3, 10);
     radio.write( payload,sizeof(payload) );
     delayMicroseconds(POST_SEND_DELAY_US);
@@ -983,7 +995,7 @@ void reportConfiguration() {
 
   #ifdef LED_TYPE_WS2812
     // send LED count
-    payload[1] = 'N';
+    payload[1] = 'n';
     utoa(config.getLedCount(), payload+3, 10);
     radio.write( payload,sizeof(payload) );
     delayMicroseconds(POST_SEND_DELAY_US);
@@ -991,7 +1003,7 @@ void reportConfiguration() {
 
   #ifdef ILLUMINANCE_SENSOR
     // send illuminance threshold
-    payload[1] = 'I';
+    payload[1] = 'i';
     utoa((uint16_t)(config.getIlluminanceThreshold()), payload+3, 10);
     radio.write( payload,sizeof(payload) );
     delayMicroseconds(POST_SEND_DELAY_US);

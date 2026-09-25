@@ -43,7 +43,7 @@
 #include "Configuration.h"
 
 // SW release version
-const uint8_t SW_RELEASE_VERSION = 7;
+const uint8_t SW_RELEASE_VERSION = 8;
 
 // wait time after sending data in microseconds
 const uint16_t POST_SEND_DELAY_US = 10000; // 10ms
@@ -622,12 +622,13 @@ void loop() {
           delayMicroseconds(1000);
         }
         uint64_t buttonPressDuration = millis() - buttonStartTime;
-        if(buttonPressDuration > LONG_PRESS_THRESHOLD_MS) {
-          // long press detected, set wakeup source to 0 to ignore motion sensor 3 for now
-          payload[3] = 'L';
-        }
 
         if(config.getLongClickSupported()) {
+          if(buttonPressDuration > LONG_PRESS_THRESHOLD_MS) {
+            // long press detected, set wakeup source to 0 to ignore motion sensor 3 for now
+            payload[3] = 'L';
+          }
+
           radio.write( payload,sizeof(payload) );
         }
 
@@ -925,7 +926,7 @@ float readIlluminance() {
 #ifdef ENV_SENSOR
 /**
  * read environmental data using BME280 sensor
- * Temperature is sent in degree Celsius multiplied by 10
+ * Temperature is sent in degree Celsius multi plied by 10
  */
 void readAndSendEnvironmentalData() {
   BME280I2C bme;

@@ -6,7 +6,7 @@ set -euo pipefail
 : "${BASE_DIR:?Set BASE_DIR to the directory where MQTT messages will be stored.}"
 
 # Optional comma-separated allowlist
-MESSAGE_TYPES='s,S,t,T,w,W,a,A,r,R,b,B'
+MESSAGE_TYPES='s,S,t,T,w,W,a,A,r,R,b,B,i'
 
 # Leave empty to subscribe to all clientMessage topics.
 MESSAGE_TYPES="${MESSAGE_TYPES:-}"

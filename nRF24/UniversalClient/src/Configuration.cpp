@@ -7,9 +7,9 @@ Configuration::Configuration()
     // not initialized, set default values
     clientId = 255;             // default client ID 255
     timeout  = 60;              // default timeout 60 seconds
-    #ifdef PWM
+    #ifdef LED_TYPE_PWM
     pwmValue = 10;              // default PWM value 100%
-    #endif // PWM
+    #endif // LED_TYPE_PWM
     illuminanceThreshold = 20;  // default illuminance threshold 20 lux
     ledCount = 0;               // default LED count 0
     addressByte = ADDRESS_BYTE_DEFAULT;          // default address byte 'o'
@@ -28,9 +28,9 @@ void Configuration::init()
         // not initialized, set default values
         clientId = 255;             // default client ID 255
         timeout  = 0;               // default timeout 60 seconds
-        #ifdef PWM
+        #ifdef LED_TYPE_PWM
         pwmValue = 10;              // default PWM value 100%
-        #endif // PWM
+        #endif // LED_TYPE_PWM
         illuminanceThreshold = 20;  // default illuminance threshold 20 lux
         ledCount = 0;               // default LED count 0
         addressByte = ADDRESS_BYTE_DEFAULT;          // default address byte 'o'
@@ -44,9 +44,9 @@ void Configuration::init()
         writeByteToEEPROM(ADDRESS_IS_INITIALIZED, MAGIC_NUMBER);
         writeByteToEEPROM(ADDRESS_CLIENT_ID, clientId);
         writeWordToEEPROM(ADDRESS_TIMEOUT, timeout);
-        #ifdef PWM
+        #ifdef LED_TYPE_PWM
         writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
-        #endif // PWM
+        #endif // LED_TYPE_PWM
         writeByteToEEPROM(ADDRESS_ILLUMINANCE, illuminanceThreshold);
         writeByteToEEPROM(ADDRESS_LED_COUNT, ledCount);
         writeByteToEEPROM(ADDRESS_ADDRESS_BYTE, addressByte);
@@ -59,9 +59,9 @@ void Configuration::init()
         // read values from EEPROM
         clientId             = readByteFromEEPROM(ADDRESS_CLIENT_ID);
         timeout              = readWordFromEEPROM(ADDRESS_TIMEOUT);
-        #ifdef PWM
+        #ifdef LED_TYPE_PWM
         pwmValue             = readByteFromEEPROM(ADDRESS_PWM_VALUE);
-        #endif // PWM
+        #endif // LED_TYPE_PWM
         illuminanceThreshold = readByteFromEEPROM(ADDRESS_ILLUMINANCE);
         ledCount             = readByteFromEEPROM(ADDRESS_LED_COUNT);
         addressByte          = readByteFromEEPROM(ADDRESS_ADDRESS_BYTE);
@@ -105,7 +105,7 @@ void Configuration::setTimeout(uint16_t timeout)
     writeWordToEEPROM(ADDRESS_TIMEOUT, timeout);
 }
 
-#ifdef PWM
+#ifdef LED_TYPE_PWM
 uint8_t Configuration::getPwmValue()
 {
     return pwmValue;
@@ -115,7 +115,7 @@ void Configuration::setPwmValue(uint8_t pwmValue)
     this->pwmValue = pwmValue;
     writeByteToEEPROM(ADDRESS_PWM_VALUE, pwmValue);
 }
-#endif // PWM
+#endif // LED_TYPE_PWM
 
 uint8_t Configuration::getIlluminanceThreshold()
 {

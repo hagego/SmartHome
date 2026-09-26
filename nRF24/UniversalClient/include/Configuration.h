@@ -24,10 +24,10 @@ class Configuration {
     void setTimeout(uint16_t timeout);
 
     // gets/sets PWM value in percent
-    #ifdef PWM
+    #ifdef LED_TYPE_PWM
     uint8_t getPwmValue();
     void setPwmValue(uint8_t pwmValue);
-    #endif // PWM
+    #endif // LED_TYPE_PWM
 
     // gets/sets illuminance threeshold in lux
     uint8_t getIlluminanceThreshold();
@@ -60,9 +60,9 @@ class Configuration {
     // data members
     uint8_t  clientId;
     uint16_t timeout;
-    #ifdef PWM
+    #ifdef LED_TYPE_PWM
     uint8_t  pwmValue;
-    #endif // PWM
+    #endif // LED_TYPE_PWM
     uint8_t  illuminanceThreshold;
     uint8_t  ledCount;
     uint8_t  addressByte;

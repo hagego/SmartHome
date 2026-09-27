@@ -43,7 +43,7 @@
 #include "Configuration.h"
 
 // SW release version
-const uint8_t SW_RELEASE_VERSION = 8;
+const uint8_t SW_RELEASE_VERSION = 9;
 
 // wait time after sending data in microseconds
 const uint16_t POST_SEND_DELAY_US = 10000; // 10ms
@@ -361,6 +361,7 @@ void loop() {
       float lux = readIlluminance();
 
       if(wakeupSource == 1 || wakeupSource==2) {
+        // motion detected
         if(config.getIlluminanceThreshold()>0 && lux >= config.getIlluminanceThreshold()) {
           // ambient light is sufficient go back to sleep
           return;
@@ -371,6 +372,13 @@ void loop() {
             setPWMDutyCycle(config.getPwmValue());         // set PWM to configured brightness
             PORTA |= _BV(PA3);                             // Set PA3 high: enables DCDC for LED driver
           #endif
+        }
+      }
+      else {
+        // illuminancesensor only
+        if(config.getIlluminanceThreshold()>0 && lux < config.getIlluminanceThreshold()) {
+          // still dark, go back to sleep
+          return;
         }
       }
     #endif

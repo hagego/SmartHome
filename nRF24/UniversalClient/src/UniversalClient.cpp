@@ -43,7 +43,7 @@
 #include "Configuration.h"
 
 // SW release version
-const uint8_t SW_RELEASE_VERSION = 9;
+const uint8_t SW_RELEASE_VERSION = 11;
 
 // wait time after sending data in microseconds
 const uint16_t POST_SEND_DELAY_US = 10000; // 10ms
@@ -59,7 +59,7 @@ uint32_t       lastBatteryReportTime       = 0;      // timestamp in s of last b
 
 // report configuration data after each nth battery measurement
 #ifndef ENV_SENSOR
-const uint8_t REPORT_CONFIGURATION_INTERVAL = 10; // change as needed
+const uint8_t REPORT_CONFIGURATION_INTERVAL = 5; // change as needed
 uint8_t       batteryMeasurementCount = 0;
 #endif // ENV_SENSOR
 
@@ -273,8 +273,10 @@ uint8_t wakeupSource = 0;                     // 0 = none, 1 = motion sensor 1, 
 //
 // start LOOP
 //
-boolean gotoSleepAgain = false;
-boolean pinChangeInterruptTriggered = false;
+boolean  gotoSleepAgain = false;
+boolean  pinChangeInterruptTriggered = false;
+uint16_t lastIlluminance = 0;
+
 void loop() {
   #ifdef ENABLE_SLEEP
     if(!justStarted) {
@@ -358,7 +360,7 @@ void loop() {
 
     #ifdef ILLUMINANCE_SENSOR
       // measure illuminance
-      float lux = readIlluminance();
+      uint16_t lux = (uint16_t)readIlluminance();
 
       if(wakeupSource == 1 || wakeupSource==2) {
         // motion detected
@@ -377,9 +379,13 @@ void loop() {
       else {
         // illuminancesensor only
         if(config.getIlluminanceThreshold()>0 && lux < config.getIlluminanceThreshold()) {
-          // still dark, go back to sleep
-          return;
+          if(lastIlluminance < config.getIlluminanceThreshold()) {
+            // not the first measurement below threshold. Don't report it again
+            lastIlluminance = lux;
+            return;
+          }
         }
+        lastIlluminance = lux;
       }
     #endif
 
@@ -392,7 +398,7 @@ void loop() {
 
     #ifdef ILLUMINANCE_SENSOR
       payload[1] = 'I';
-      utoa((uint16_t)(lux), payload+3, 10);
+      utoa((lux), payload+3, 10);
       radio.write( payload,sizeof(payload) );  // Send data
     #endif
 
@@ -409,6 +415,15 @@ void loop() {
     }
     else {
       // periodic wakeup.
+      #if defined(MOTION_SENSOR) || defined(BUTTON)
+        payload[1] = 'S';
+        payload[3] = '1';
+        payload[4] = 0;
+
+        radio.write( payload,sizeof(payload) );
+        delayMicroseconds(POST_SEND_DELAY_US);
+      #endif
+
       lastBatteryReportTime += config.getSleepPeriod(); // update last battery report time based on configured sleep period
       if(lastBatteryReportTime >= MIN_BATTERY_REPORT_INTERVAL) {
         readAndSendBatteryVoltage();
@@ -665,6 +680,18 @@ void loop() {
     delayMicroseconds(1000);
   } // while loop
 
+
+
+  radio.stopListening();          // set module as transmitter
+
+  payload[1] = 'L';
+  payload[3] = '0';
+  payload[4] = 0;
+  radio.write( payload,sizeof(payload) );
+  delayMicroseconds(POST_SEND_DELAY_US);
+
+  radio.txStandBy();              // Wait for the transmission to complete
+
   #ifdef MOTION_SENSOR
     // ensure motion sensor input pins are low again before going back to sleep to avoid immediate wakeup
     if(wakeupSource == 1) {
@@ -678,16 +705,6 @@ void loop() {
       }
     }
   #endif
-
-  radio.stopListening();          // set module as transmitter
-
-  payload[1] = 'L';
-  payload[3] = '0';
-  payload[4] = 0;
-  radio.write( payload,sizeof(payload) );
-  delayMicroseconds(POST_SEND_DELAY_US);
-
-  radio.txStandBy();              // Wait for the transmission to complete
 }
 
 

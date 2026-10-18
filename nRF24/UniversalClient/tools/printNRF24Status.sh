@@ -30,7 +30,7 @@ for device_dir in "$BASE_DIR"/*/; do
         [[ "$property_name" == "name" ]] && continue
         property_value="$(<"$property_file")"
         updated_at="$(date -r "$property_file" '+%Y-%m-%d %H:%M:%S')"
-        printf '  %s: %s (%s)\n' "$property_name" "$property_value" "$updated_at"
+        printf '  %s: %5s \t(%s)\n' "$property_name" "$property_value" "$updated_at"
     done
 done
 

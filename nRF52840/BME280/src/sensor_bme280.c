@@ -14,7 +14,7 @@ BME280 SCL  -> XIAO D5
 
 */
 
-LOG_MODULE_DECLARE(bthome_node, LOG_LEVEL_INF);
+LOG_MODULE_DECLARE(bthome_ext, LOG_LEVEL_INF);
 
 #if DT_HAS_COMPAT_STATUS_OKAY(bosch_bme280)
 static const struct device *bme280_dev = DEVICE_DT_GET_ONE(bosch_bme280);
@@ -25,6 +25,57 @@ static const struct device *bme280_dev;
 static int32_t sensor_value_to_centi(const struct sensor_value *value)
 {
 	return value->val1 * 100 + value->val2 / 10000;
+}
+
+void measure_bme280(int16_t *temp_bme280_cdegc,int16_t *hum_bme280_centi) {
+		struct sensor_value temperature;
+	struct sensor_value humidity;
+	struct sensor_value pressure;
+	int32_t temperature_centi = 0;
+	uint32_t humidity_centi = 0;
+	uint32_t pressure_chpa = 0;
+	int ret;
+
+		if (!bme280_dev ) {
+		LOG_WRN("bme280_dev not initialized",0);
+		return;
+	}
+
+	if (!bme280_dev || !device_is_ready(bme280_dev)) {
+		LOG_WRN("BME280 is not ready",0);
+		return;
+	}
+
+	ret = sensor_sample_fetch(bme280_dev);
+	if (ret < 0) {
+		LOG_WRN("BME280 sample failed: %d", ret);
+		return;
+	}
+
+	ret = sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &temperature);
+	if (ret == 0) {
+		temperature_centi = sensor_value_to_centi(&temperature);
+		//bthome_v2_add_temperature(ctx, (int16_t)temperature_centi);
+		if (temp_bme280_cdegc) {
+			*temp_bme280_cdegc = (int16_t)temperature_centi;
+		}	
+	}
+
+	ret = sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY, &humidity);
+	LOG_INF("BME280 humidity read: ret=%d val1=%d val2=%d", ret, humidity.val1, humidity.val2);
+	if (ret == 0) {
+		humidity_centi = (uint32_t)sensor_value_to_centi(&humidity);
+		//bthome_v2_add_humidity(ctx, (uint16_t)humidity_centi);
+		if (hum_bme280_centi) {
+			*hum_bme280_centi = (int16_t)humidity.val1;
+		}
+	}
+
+
+	LOG_INF("BME280: %d.%02d C, %d.%02d %%, %d.%02d hPa",
+		(int)(temperature_centi / 100), (int)(temperature_centi % 100),
+		(int)(humidity_centi / 100), (int)(humidity_centi % 100),
+		(int)(pressure_chpa / 100), (int)(pressure_chpa % 100));
 }
 
 void sensor_bme280_update(struct bthome_v2_ctx *ctx)
@@ -38,12 +89,12 @@ void sensor_bme280_update(struct bthome_v2_ctx *ctx)
 	int ret;
 
 		if (!bme280_dev ) {
-		LOG_WRN("bme280_dev not initialized");
+		LOG_WRN("bme280_dev not initialized",0);
 		return;
 	}
 
 	if (!bme280_dev || !device_is_ready(bme280_dev)) {
-		LOG_WRN("BME280 is not ready");
+		LOG_WRN("BME280 is not ready",0);
 		return;
 	}
 
